@@ -53,3 +53,21 @@ test("starter preview is fully removed", async () => {
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   await assert.rejects(access(new URL("../app/_sites-preview/", import.meta.url)));
 });
+
+test("v3 includes the expanded roadmap, job, interview and practice systems", async () => {
+  const [page, data] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/data-v3.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(page, /roadmap-table-head/);
+  assert.match(page, /position-heading/);
+  assert.match(page, /resourceSort/);
+  assert.match(page, /startVoiceInput/);
+  assert.match(page, /结构化参考答案/);
+  assert.match(page, /flashcard-lab/);
+  assert.match(page, /knowledge-graph-lab/);
+  assert.match(data, /Array\.from\(\{ length: 10 \}/);
+  assert.match(data, /interviewCollections/);
+  assert.match(page, /3 条中文 \+ 3 条国际资源/);
+});
