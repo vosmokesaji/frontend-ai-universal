@@ -55,9 +55,10 @@ test("starter preview is fully removed", async () => {
 });
 
 test("v3 includes the expanded roadmap, job, interview and practice systems", async () => {
-  const [page, data] = await Promise.all([
+  const [page, data, modelRoute] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/data-v3.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/interview-review/route.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /roadmap-table-head/);
@@ -70,4 +71,9 @@ test("v3 includes the expanded roadmap, job, interview and practice systems", as
   assert.match(data, /Array\.from\(\{ length: 10 \}/);
   assert.match(data, /interviewCollections/);
   assert.match(page, /3 条中文 \+ 3 条国际资源/);
+  assert.match(page, /DeepSeek V4 Flash/);
+  assert.match(modelRoute, /DEEPSEEK_API_KEY/);
+  assert.match(modelRoute, /https:\/\/api\.deepseek\.com/);
+  assert.match(modelRoute, /deepseek-v4-flash/);
+  assert.match(modelRoute, /response_format: \{ type: "json_object" \}/);
 });

@@ -84,15 +84,17 @@ export default function Home() {
   const [isListening, setIsListening] = useState(false);
   const [voiceMessage, setVoiceMessage] = useState("点击麦克风开始口述，识别结果会实时转成文字。");
   const [seconds, setSeconds] = useState(0);
+  const [isReviewing, setIsReviewing] = useState(false);
+  const [modelError, setModelError] = useState("");
   const [review, setReview] = useState<null | {
     score: number;
     structure: number;
     evidence: number;
     depth: number;
-    missing: string[];
     engine: "local" | "model";
     strengths: string[];
     improvements: { point: string; example: string }[];
+    annotations: { quote: string; type: "excellent"; reason: string }[];
   }>(null);
   const [completedPractice, setCompletedPractice] = useState<string[]>([]);
   const [practiceMode, setPracticeMode] = useState<"flashcards" | "graph" | "drills">(
@@ -170,6 +172,8 @@ export default function Home() {
     setSelectedQuestion(question);
     setAnswer("");
     setReview(null);
+    setModelError("");
+    setIsReviewing(false);
     setSeconds(0);
     setIsListening(false);
   }
@@ -234,7 +238,7 @@ export default function Home() {
     window.setTimeout(() => recognition.stop(), 180000);
   }
 
-  function submitAnswer() {
+  function buildLocalReview() {
     const normalized = answer.toLowerCase();
     const hitCount = selectedQuestion.keywords.filter((keyword) =>
       normalized.includes(keyword.toLowerCase()),
@@ -258,15 +262,12 @@ export default function Home() {
           coverage * 26,
       ),
     );
-    setReview({
+    return {
       score: Math.min(96, Math.round(structure * 0.34 + evidence * 0.32 + depth * 0.34)),
       structure,
       evidence,
       depth,
-      missing: selectedQuestion.keywords
-        .filter((keyword) => !normalized.includes(keyword.toLowerCase()))
-        .slice(0, 4),
-      engine: "local",
+      engine: "local" as const,
       strengths: [
         hitCount
           ? `覆盖了 ${hitCount} 个关键概念，核心术语与题目方向一致。`
@@ -288,7 +289,67 @@ export default function Home() {
           example: selectedQuestion.reference.example,
         },
       ],
-    });
+      annotations: [] as { quote: string; type: "excellent"; reason: string }[],
+    };
+  }
+
+  async function submitAnswer() {
+    setIsReviewing(true);
+    setModelError("");
+    try {
+      const response = await fetch("/api/interview-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: selectedQuestion.question,
+          purpose: selectedQuestion.purpose,
+          answer,
+          answerFrame: selectedQuestion.answerFrame,
+          keywords: selectedQuestion.keywords,
+          reference: selectedQuestion.reference,
+        }),
+      });
+      const result = (await response.json()) as {
+        engine?: "model";
+        model?: string;
+        score?: number;
+        dimensions?: { structure?: number; evidence?: number; depth?: number };
+        strengths?: string[];
+        improvements?: { point: string; example: string }[];
+        annotations?: { quote: string; type: "excellent"; reason: string }[];
+        message?: string;
+      };
+
+      if (
+        response.ok &&
+        result.engine === "model" &&
+        typeof result.score === "number" &&
+        result.dimensions
+      ) {
+        setReview({
+          score: result.score,
+          structure: result.dimensions.structure ?? 0,
+          evidence: result.dimensions.evidence ?? 0,
+          depth: result.dimensions.depth ?? 0,
+          engine: "model",
+          strengths: result.strengths ?? [],
+          improvements: result.improvements ?? [],
+          annotations: result.annotations ?? [],
+        });
+        return;
+      }
+
+      setModelError(
+        result.message ??
+          "DeepSeek 暂时无法完成评分，本轮已自动切换为本地结构化评估。",
+      );
+      setReview(buildLocalReview());
+    } catch {
+      setModelError("网络暂时不可用，本轮已自动切换为本地结构化评估。");
+      setReview(buildLocalReview());
+    } finally {
+      setIsReviewing(false);
+    }
   }
 
   function nextQuestion() {
@@ -866,32 +927,39 @@ export default function Home() {
                   <span>{inputMode === "voice" ? "语音转写 · 可手动修正" : "输入完整回答"}</span>
                   <textarea
                     value={answer}
-                    disabled={Boolean(review)}
+                    disabled={Boolean(review) || isReviewing}
                     onChange={(event) => setAnswer(event.target.value)}
                     placeholder="建议 300—600 字。先给结论，再讲场景、架构、关键取舍、量化结果和复盘……"
                   />
-                  <small>{answer.length} 字 · 本地评估时不会上传</small>
+                  <small>
+                    {answer.length} 字 · 模型评分会将本题答案发送给 DeepSeek
+                  </small>
                 </label>
                 {!review ? (
                   <>
                     <button
                       className="review-button"
-                      disabled={answer.trim().length < 80}
+                      disabled={answer.trim().length < 80 || isReviewing}
                       onClick={submitAnswer}
                     >
-                      生成结构化复盘
+                      {isReviewing ? "DeepSeek 正在评估…" : "生成结构化复盘"}
                     </button>
                     <p className="model-status">
                       <span>AI</span>
-                      模型评分接口待配置；当前先使用透明的本地规则评估，不会冒充模型结果。
+                      DeepSeek V4 Flash 已接入；未配置密钥或请求失败时自动使用本地评估。
                     </p>
                   </>
                 ) : (
                   <div className="review-result">
                     <div className="review-engine">
-                      <span>{review.engine === "model" ? "AI 模型评分" : "本地结构化评估"}</span>
-                      {review.engine === "local" && <em>待接入模型后自动升级</em>}
+                      <span>
+                        {review.engine === "model"
+                          ? "DeepSeek V4 Flash · 模型评分"
+                          : "本地结构化评估"}
+                      </span>
+                      {review.engine === "local" && <em>未使用模型结果</em>}
                     </div>
+                    {modelError && <p className="model-error">{modelError}</p>}
                     <div className="review-score-row">
                       <div className="total-score">
                         <strong>{review.score}</strong><span>本轮得分<br />/ 100</span>
@@ -913,12 +981,23 @@ export default function Home() {
                       <small>答案标记 · 绿色为表现较好的证据和关键概念</small>
                       <p>
                         {answer.split(/([。！？；\n])/).map((sentence, index) => {
-                          const strong =
-                            selectedQuestion.keywords.some((keyword) =>
-                              sentence.toLowerCase().includes(keyword.toLowerCase()),
-                            ) || /\d|%|用户|指标|结果|成本/.test(sentence);
+                          const modelAnnotation = review.annotations.find(
+                            (annotation) =>
+                              sentence.includes(annotation.quote) ||
+                              annotation.quote.includes(sentence.trim()),
+                          );
+                          const strong = review.engine === "model"
+                            ? Boolean(modelAnnotation)
+                            : selectedQuestion.keywords.some((keyword) =>
+                                sentence.toLowerCase().includes(keyword.toLowerCase()),
+                              ) || /\d|%|用户|指标|结果|成本/.test(sentence);
                           return strong ? (
-                            <mark key={`${sentence}-${index}`}>{sentence}</mark>
+                            <mark
+                              key={`${sentence}-${index}`}
+                              title={modelAnnotation?.reason}
+                            >
+                              {sentence}
+                            </mark>
                           ) : (
                             <span key={`${sentence}-${index}`}>{sentence}</span>
                           );

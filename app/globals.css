@@ -2379,6 +2379,17 @@ select {
   padding: 4px;
 }
 
+.model-error {
+  background: #fff4e8;
+  border: 1px solid #f0d8bd;
+  border-radius: 10px;
+  color: #8a4d13;
+  font-size: 8px;
+  line-height: 1.55;
+  margin: 0 0 14px;
+  padding: 9px 11px;
+}
+
 .review-result {
   display: block;
   padding: 20px;
