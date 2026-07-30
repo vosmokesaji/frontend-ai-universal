@@ -65,7 +65,7 @@ test("v3 includes the expanded roadmap, job, interview and practice systems", as
   assert.match(page, /position-heading/);
   assert.match(page, /resourceSort/);
   assert.match(page, /startVoiceInput/);
-  assert.match(page, /结构化参考答案/);
+  assert.match(page, /参考答案 · 两种阅读方式/);
   assert.match(page, /flashcard-lab/);
   assert.match(page, /knowledge-graph-lab/);
   assert.match(data, /Array\.from\(\{ length: 10 \}/);
@@ -76,4 +76,23 @@ test("v3 includes the expanded roadmap, job, interview and practice systems", as
   assert.match(modelRoute, /https:\/\/api\.deepseek\.com/);
   assert.match(modelRoute, /deepseek-v4-flash/);
   assert.match(modelRoute, /response_format: \{ type: "json_object" \}/);
+  assert.match(page, /frontend-ai-interview-history-v1/);
+  assert.match(page, /重新回答本题/);
+  assert.match(page, /ScoreTrend/);
+  assert.match(page, /voiceInterim/);
+  assert.match(page, /完整优质回答/);
+  assert.match(page, /event\.code === "Space"/);
+  assert.match(page, /event\.key === "ArrowLeft"/);
+  assert.match(data, /const flashcardBlueprints/);
+  assert.match(data, /fullReferenceAnswers/);
+  assert.match(data, /export const practices: PracticeDrill\[\]/);
+  const flashcardBlock = data.slice(
+    data.indexOf("const flashcardBlueprints"),
+    data.indexOf("export const flashcards"),
+  );
+  assert.equal(
+    flashcardBlock.match(/^\s+\["(?:低|中|高)"/gm)?.length,
+    84,
+    "14 knowledge modules should each contain 6 flashcards",
+  );
 });

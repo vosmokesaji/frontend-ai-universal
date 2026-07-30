@@ -25,7 +25,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const socialImage = `${protocol}://${host}/og.png`;
   const title = "Frontend to AI｜前端开发者 AI 转型指南";
   const description =
-    "面向前端开发者的 AI 转型指南：14 个三级知识模块、84 条中英文教程、100 条岗位观察、52 组面经、语音模拟面试、闪卡与知识图谱。";
+    "面向前端开发者的 AI 转型指南：14 个三级知识模块、84 条教程、100 条岗位观察、52 组面经、回答进步曲线、84 张分级闪卡与交互知识图谱。";
 
   return {
     title,

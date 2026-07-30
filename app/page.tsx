@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   flashcards,
   interviewSources,
@@ -17,6 +17,25 @@ import {
 type TabId = "home" | "roadmap" | "roles" | "interview" | "practice";
 type RoadmapSortKey = "importance" | "difficulty" | "days";
 type ResourceSortKey = "ease" | "professional";
+type ReviewResult = {
+  score: number;
+  structure: number;
+  evidence: number;
+  depth: number;
+  engine: "local" | "model";
+  strengths: string[];
+  improvements: { point: string; example: string }[];
+  annotations: { quote: string; type: "excellent"; reason: string }[];
+};
+type InterviewAttempt = {
+  id: string;
+  questionId: number;
+  question: string;
+  answer: string;
+  createdAt: string;
+  duration: number;
+  review: ReviewResult;
+};
 
 const tabs: { id: TabId; label: string }[] = [
   { id: "home", label: "概览" },
@@ -64,6 +83,106 @@ function Rating({ value, label }: { value: number; label: string }) {
   );
 }
 
+function ScoreTrend({ attempts }: { attempts: InterviewAttempt[] }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !attempts.length) return;
+    const render = () => {
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = width * ratio;
+      canvas.height = height * ratio;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      context.scale(ratio, ratio);
+      context.clearRect(0, 0, width, height);
+
+      const padding = { top: 24, right: 24, bottom: 34, left: 38 };
+      const chartWidth = width - padding.left - padding.right;
+      const chartHeight = height - padding.top - padding.bottom;
+      context.font = "10px ui-monospace, monospace";
+      context.textAlign = "right";
+      context.textBaseline = "middle";
+      [50, 75, 100].forEach((score) => {
+        const y = padding.top + ((100 - score) / 50) * chartHeight;
+        context.strokeStyle = "rgba(118, 118, 128, 0.16)";
+        context.lineWidth = 1;
+        context.beginPath();
+        context.moveTo(padding.left, y);
+        context.lineTo(width - padding.right, y);
+        context.stroke();
+        context.fillStyle = "#929298";
+        context.fillText(String(score), padding.left - 9, y);
+      });
+
+      const points = attempts.map((attempt, index) => ({
+        x:
+          attempts.length === 1
+            ? padding.left + chartWidth / 2
+            : padding.left + (index / (attempts.length - 1)) * chartWidth,
+        y: padding.top + ((100 - Math.max(50, attempt.review.score)) / 50) * chartHeight,
+        score: attempt.review.score,
+      }));
+
+      const gradient = context.createLinearGradient(0, padding.top, 0, height);
+      gradient.addColorStop(0, "rgba(0, 113, 227, 0.28)");
+      gradient.addColorStop(1, "rgba(0, 113, 227, 0)");
+      context.beginPath();
+      context.moveTo(points[0].x, padding.top + chartHeight);
+      points.forEach((point) => context.lineTo(point.x, point.y));
+      context.lineTo(points.at(-1)!.x, padding.top + chartHeight);
+      context.closePath();
+      context.fillStyle = gradient;
+      context.fill();
+
+      context.beginPath();
+      points.forEach((point, index) => {
+        if (index === 0) context.moveTo(point.x, point.y);
+        else context.lineTo(point.x, point.y);
+      });
+      context.strokeStyle = "#0071e3";
+      context.lineWidth = 3;
+      context.lineJoin = "round";
+      context.lineCap = "round";
+      context.stroke();
+
+      points.forEach((point, index) => {
+        context.beginPath();
+        context.arc(point.x, point.y, 5, 0, Math.PI * 2);
+        context.fillStyle = "white";
+        context.fill();
+        context.strokeStyle = "#0071e3";
+        context.lineWidth = 3;
+        context.stroke();
+        context.fillStyle = "#1d1d1f";
+        context.textAlign = "center";
+        context.fillText(String(point.score), point.x, point.y - 14);
+        context.fillStyle = "#929298";
+        context.fillText(`第 ${index + 1} 次`, point.x, height - 13);
+      });
+    };
+
+    render();
+    const observer = new ResizeObserver(render);
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [attempts]);
+
+  return (
+    <canvas
+      className="score-trend-canvas"
+      ref={canvasRef}
+      role="img"
+      aria-label={`最近 ${attempts.length} 次回答得分：${attempts
+        .map((attempt) => attempt.review.score)
+        .join("、")}`}
+    />
+  );
+}
+
 export default function Home() {
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [experience, setExperience] = useState<ExperienceId>("growing");
@@ -82,24 +201,22 @@ export default function Home() {
   const [answer, setAnswer] = useState("");
   const [inputMode, setInputMode] = useState<"voice" | "text">("voice");
   const [isListening, setIsListening] = useState(false);
+  const [voiceInterim, setVoiceInterim] = useState("");
   const [voiceMessage, setVoiceMessage] = useState("点击麦克风开始口述，识别结果会实时转成文字。");
   const [seconds, setSeconds] = useState(0);
   const [isReviewing, setIsReviewing] = useState(false);
   const [modelError, setModelError] = useState("");
-  const [review, setReview] = useState<null | {
-    score: number;
-    structure: number;
-    evidence: number;
-    depth: number;
-    engine: "local" | "model";
-    strengths: string[];
-    improvements: { point: string; example: string }[];
-    annotations: { quote: string; type: "excellent"; reason: string }[];
-  }>(null);
+  const [review, setReview] = useState<ReviewResult | null>(null);
+  const [answerHistory, setAnswerHistory] = useState<InterviewAttempt[]>([]);
+  const [referenceMode, setReferenceMode] = useState<"structured" | "full">(
+    "structured",
+  );
   const [completedPractice, setCompletedPractice] = useState<string[]>([]);
   const [practiceMode, setPracticeMode] = useState<"flashcards" | "graph" | "drills">(
     "flashcards",
   );
+  const [flashcardModule, setFlashcardModule] = useState("全部");
+  const [flashcardDifficulty, setFlashcardDifficulty] = useState("全部");
   const [flashcardIndex, setFlashcardIndex] = useState(0);
   const [flashcardFlipped, setFlashcardFlipped] = useState(false);
   const [knownCards, setKnownCards] = useState<string[]>([]);
@@ -116,6 +233,22 @@ export default function Home() {
     }
     const savedPractice = window.localStorage.getItem("frontend-ai-practice-v2");
     if (savedPractice) setCompletedPractice(JSON.parse(savedPractice) as string[]);
+    const savedHistory = window.localStorage.getItem("frontend-ai-interview-history-v1");
+    if (savedHistory) {
+      try {
+        setAnswerHistory(JSON.parse(savedHistory) as InterviewAttempt[]);
+      } catch {
+        window.localStorage.removeItem("frontend-ai-interview-history-v1");
+      }
+    }
+    const savedCards = window.localStorage.getItem("frontend-ai-known-cards-v1");
+    if (savedCards) {
+      try {
+        setKnownCards(JSON.parse(savedCards) as string[]);
+      } catch {
+        window.localStorage.removeItem("frontend-ai-known-cards-v1");
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -168,12 +301,82 @@ export default function Home() {
     [questionRole],
   );
 
+  const questionAttempts = useMemo(
+    () =>
+      answerHistory
+        .filter((attempt) => attempt.questionId === selectedQuestion.id)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    [answerHistory, selectedQuestion.id],
+  );
+
+  const filteredFlashcards = useMemo(
+    () =>
+      flashcards.filter(
+        (card) =>
+          (flashcardModule === "全部" || card.knowledgeId === flashcardModule) &&
+          (flashcardDifficulty === "全部" || card.difficulty === flashcardDifficulty),
+      ),
+    [flashcardDifficulty, flashcardModule],
+  );
+  const currentFlashcard = filteredFlashcards[flashcardIndex] ?? flashcards[0];
+  const selectedGraph = knowledgeGraph.nodes.find(
+    (node) => node.id === selectedGraphNode,
+  )!;
+  const graphUpstream = knowledgeGraph.edges
+    .filter(([, to]) => to === selectedGraphNode)
+    .map(([from]) => from);
+  const graphDownstream = knowledgeGraph.edges
+    .filter(([from]) => from === selectedGraphNode)
+    .map(([, to]) => to);
+  const graphRelated = new Set([
+    selectedGraphNode,
+    ...graphUpstream,
+    ...graphDownstream,
+  ]);
+
+  useEffect(() => {
+    setFlashcardIndex(0);
+    setFlashcardFlipped(false);
+  }, [flashcardDifficulty, flashcardModule]);
+
+  useEffect(() => {
+    if (activeTab !== "practice" || practiceMode !== "flashcards") return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.matches("input, textarea, select, button") ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        setFlashcardFlipped(false);
+        setFlashcardIndex(
+          (index) =>
+            (index - 1 + filteredFlashcards.length) % filteredFlashcards.length,
+        );
+      }
+      if (event.key === "ArrowRight") {
+        setFlashcardFlipped(false);
+        setFlashcardIndex((index) => (index + 1) % filteredFlashcards.length);
+      }
+      if (event.code === "Space") {
+        event.preventDefault();
+        setFlashcardFlipped((value) => !value);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeTab, filteredFlashcards.length, practiceMode]);
+
   function chooseQuestion(question: QuestionV3) {
     setSelectedQuestion(question);
     setAnswer("");
     setReview(null);
     setModelError("");
     setIsReviewing(false);
+    setVoiceInterim("");
+    setReferenceMode("structured");
     setSeconds(0);
     setIsListening(false);
   }
@@ -189,6 +392,7 @@ export default function Home() {
 
   function startVoiceInput() {
     type RecognitionEvent = {
+      resultIndex: number;
       results: ArrayLike<{
         0: { transcript: string };
         isFinal: boolean;
@@ -220,18 +424,41 @@ export default function Home() {
     recognition.lang = "zh-CN";
     recognition.continuous = true;
     recognition.interimResults = true;
+    const answerBeforeRecording = answer.trim();
+    let committedTranscript = "";
     recognition.onresult = (event) => {
-      let finalText = "";
-      for (let index = 0; index < event.results.length; index += 1) {
-        if (event.results[index].isFinal) finalText += event.results[index][0].transcript;
+      let interimTranscript = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const transcript = event.results[index][0].transcript;
+        if (event.results[index].isFinal) committedTranscript += `${transcript} `;
+        else interimTranscript += transcript;
       }
-      if (finalText) setAnswer((value) => `${value}${value ? " " : ""}${finalText}`);
+      setVoiceInterim(interimTranscript);
+      setAnswer(
+        [answerBeforeRecording, committedTranscript.trim(), interimTranscript.trim()]
+          .filter(Boolean)
+          .join(" "),
+      );
+      setVoiceMessage(
+        interimTranscript
+          ? `实时识别：${interimTranscript}`
+          : `已记录 ${committedTranscript.trim().length} 字，继续说即可。`,
+      );
     };
     recognition.onerror = () => {
       setIsListening(false);
+      setVoiceInterim("");
       setVoiceMessage("没有识别到声音，请检查麦克风权限后重试，或切换文本输入。");
     };
-    recognition.onend = () => setIsListening(false);
+    recognition.onend = () => {
+      setIsListening(false);
+      setVoiceInterim("");
+      setVoiceMessage(
+        committedTranscript
+          ? `本次语音已实时转写 ${committedTranscript.trim().length} 字，可直接修正或提交。`
+          : "本次没有识别到有效内容，请重试或切换文本输入。",
+      );
+    };
     recognition.start();
     setIsListening(true);
     setVoiceMessage("正在聆听…请像真实面试一样完整回答。");
@@ -293,6 +520,26 @@ export default function Home() {
     };
   }
 
+  function saveAttempt(nextReview: ReviewResult) {
+    const attempt: InterviewAttempt = {
+      id: `${selectedQuestion.id}-${Date.now()}`,
+      questionId: selectedQuestion.id,
+      question: selectedQuestion.question,
+      answer: answer.trim(),
+      createdAt: new Date().toISOString(),
+      duration: seconds,
+      review: nextReview,
+    };
+    setAnswerHistory((items) => {
+      const next = [...items, attempt].slice(-120);
+      window.localStorage.setItem(
+        "frontend-ai-interview-history-v1",
+        JSON.stringify(next),
+      );
+      return next;
+    });
+  }
+
   async function submitAnswer() {
     setIsReviewing(true);
     setModelError("");
@@ -326,7 +573,7 @@ export default function Home() {
         typeof result.score === "number" &&
         result.dimensions
       ) {
-        setReview({
+        const nextReview: ReviewResult = {
           score: result.score,
           structure: result.dimensions.structure ?? 0,
           evidence: result.dimensions.evidence ?? 0,
@@ -335,7 +582,9 @@ export default function Home() {
           strengths: result.strengths ?? [],
           improvements: result.improvements ?? [],
           annotations: result.annotations ?? [],
-        });
+        };
+        setReview(nextReview);
+        saveAttempt(nextReview);
         return;
       }
 
@@ -343,10 +592,14 @@ export default function Home() {
         result.message ??
           "DeepSeek 暂时无法完成评分，本轮已自动切换为本地结构化评估。",
       );
-      setReview(buildLocalReview());
+      const nextReview = buildLocalReview();
+      setReview(nextReview);
+      saveAttempt(nextReview);
     } catch {
       setModelError("网络暂时不可用，本轮已自动切换为本地结构化评估。");
-      setReview(buildLocalReview());
+      const nextReview = buildLocalReview();
+      setReview(nextReview);
+      saveAttempt(nextReview);
     } finally {
       setIsReviewing(false);
     }
@@ -361,22 +614,42 @@ export default function Home() {
     );
   }
 
-  function togglePractice(tag: string) {
-    const next = completedPractice.includes(tag)
-      ? completedPractice.filter((item) => item !== tag)
-      : [...completedPractice, tag];
+  function retryQuestion() {
+    setAnswer("");
+    setReview(null);
+    setModelError("");
+    setVoiceInterim("");
+    setIsListening(false);
+    setIsReviewing(false);
+    setSeconds(0);
+  }
+
+  function togglePractice(id: string) {
+    const next = completedPractice.includes(id)
+      ? completedPractice.filter((item) => item !== id)
+      : [...completedPractice, id];
     setCompletedPractice(next);
     window.localStorage.setItem("frontend-ai-practice-v2", JSON.stringify(next));
   }
 
   function rateFlashcard(known: boolean) {
-    const current = flashcards[flashcardIndex];
+    const current = currentFlashcard;
     if (known && !knownCards.includes(current.id)) {
-      setKnownCards((items) => [...items, current.id]);
+      setKnownCards((items) => {
+        const next = [...items, current.id];
+        window.localStorage.setItem("frontend-ai-known-cards-v1", JSON.stringify(next));
+        return next;
+      });
     }
-    if (!known) setKnownCards((items) => items.filter((id) => id !== current.id));
+    if (!known) {
+      setKnownCards((items) => {
+        const next = items.filter((id) => id !== current.id);
+        window.localStorage.setItem("frontend-ai-known-cards-v1", JSON.stringify(next));
+        return next;
+      });
+    }
     setFlashcardFlipped(false);
-    setFlashcardIndex((index) => (index + 1) % flashcards.length);
+    setFlashcardIndex((index) => (index + 1) % filteredFlashcards.length);
   }
 
   return (
@@ -920,6 +1193,16 @@ export default function Home() {
                       <small>{isListening ? "最长 3 分钟 · 自动转写" : "点击后请允许麦克风权限"}</small>
                     </button>
                     <p>{voiceMessage}</p>
+                    {isListening && (
+                      <div className="live-transcript" aria-live="polite">
+                        <span>LIVE</span>
+                        <p>
+                          {voiceInterim ||
+                            answer.slice(-120) ||
+                            "正在等待语音，请开始回答…"}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1022,46 +1305,120 @@ export default function Home() {
                         ))}
                       </section>
                     </div>
-                    <button onClick={nextQuestion}>下一题</button>
+                    <div className="review-actions">
+                      <button className="retry-answer" onClick={retryQuestion}>
+                        重新回答本题
+                      </button>
+                      <button onClick={nextQuestion}>下一题</button>
+                    </div>
                   </div>
                 )}
 
                 <details className="reference-answer">
                   <summary>
-                    <span>结构化参考答案</span>
-                    <em>选题后即可查看，无需模型生成</em>
+                    <span>参考答案 · 两种阅读方式</span>
+                    <em>结构提纲与完整口述可切换</em>
                   </summary>
                   <div className="reference-content">
-                    <section className="reference-thesis">
-                      <small>一句话主张</small>
-                      <strong>{selectedQuestion.reference.thesis}</strong>
-                    </section>
-                    <div className="reference-grid">
-                      {selectedQuestion.reference.sections.map((section, index) => (
-                        <article key={section.label}>
-                          <span>{String(index + 1).padStart(2, "0")}</span>
-                          <strong>{section.label}</strong>
-                          <p>{section.content}</p>
-                        </article>
-                      ))}
+                    <div className="reference-mode-switch" role="tablist">
+                      <button
+                        className={referenceMode === "structured" ? "active" : ""}
+                        onClick={() => setReferenceMode("structured")}
+                      >
+                        结构化提纲
+                      </button>
+                      <button
+                        className={referenceMode === "full" ? "active" : ""}
+                        onClick={() => setReferenceMode("full")}
+                      >
+                        完整优质回答
+                      </button>
                     </div>
-                    <div className="reference-evidence">
-                      <section>
-                        <small>必须给出的证据</small>
-                        {selectedQuestion.reference.evidence.map((item) => (
-                          <p key={item}>＋ {item}</p>
-                        ))}
+                    {referenceMode === "structured" ? (
+                      <>
+                        <section className="reference-thesis">
+                          <small>一句话主张</small>
+                          <strong>{selectedQuestion.reference.thesis}</strong>
+                        </section>
+                        <div className="reference-grid">
+                          {selectedQuestion.reference.sections.map((section, index) => (
+                            <article key={section.label}>
+                              <span>{String(index + 1).padStart(2, "0")}</span>
+                              <strong>{section.label}</strong>
+                              <p>{section.content}</p>
+                            </article>
+                          ))}
+                        </div>
+                        <div className="reference-evidence">
+                          <section>
+                            <small>必须给出的证据</small>
+                            {selectedQuestion.reference.evidence.map((item) => (
+                              <p key={item}>＋ {item}</p>
+                            ))}
+                          </section>
+                          <section>
+                            <small>常见失分点</small>
+                            {selectedQuestion.reference.pitfalls.map((item) => (
+                              <p key={item}>× {item}</p>
+                            ))}
+                          </section>
+                        </div>
+                        <blockquote>{selectedQuestion.reference.example}</blockquote>
+                      </>
+                    ) : (
+                      <section className="full-reference-answer">
+                        <small>可直接练习口述 · 建议理解结构后换成自己的项目证据</small>
+                        <p>{selectedQuestion.reference.fullAnswer}</p>
                       </section>
-                      <section>
-                        <small>常见失分点</small>
-                        {selectedQuestion.reference.pitfalls.map((item) => (
-                          <p key={item}>× {item}</p>
-                        ))}
-                      </section>
-                    </div>
-                    <blockquote>{selectedQuestion.reference.example}</blockquote>
+                    )}
                   </div>
                 </details>
+                {questionAttempts.length > 0 && (
+                  <section className="answer-history">
+                    <div className="history-heading">
+                      <div>
+                        <small>ANSWER HISTORY · 当前设备保存</small>
+                        <h3>这道题的进步曲线</h3>
+                      </div>
+                      <strong>{questionAttempts.length} 次回答</strong>
+                    </div>
+                    <ScoreTrend attempts={questionAttempts.slice(-8)} />
+                    <div className="history-snapshots">
+                      {[...questionAttempts].reverse().map((attempt, index) => (
+                        <details key={attempt.id}>
+                          <summary>
+                            <span>第 {questionAttempts.length - index} 次</span>
+                            <strong>{attempt.review.score} 分</strong>
+                            <time>
+                              {new Date(attempt.createdAt).toLocaleString("zh-CN", {
+                                month: "2-digit",
+                                day: "2-digit",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </time>
+                            <em>{formatTime(attempt.duration)}</em>
+                          </summary>
+                          <div>
+                            <small>回答快照</small>
+                            <p>{attempt.answer}</p>
+                            <section>
+                              <span>结构 {attempt.review.structure}</span>
+                              <span>证据 {attempt.review.evidence}</span>
+                              <span>深度 {attempt.review.depth}</span>
+                            </section>
+                            <small>当次建议</small>
+                            {attempt.review.improvements.map((item) => (
+                              <p key={item.point}>
+                                <strong>{item.point}</strong> {item.example}
+                              </p>
+                            ))}
+                          </div>
+                        </details>
+                      ))}
+                    </div>
+                  </section>
+                )}
                 <details className="source-drawer">
                   <summary>
                     查看这道题的 {selectedQuestion.sourceIds.length} 组面经来源
@@ -1087,7 +1444,10 @@ export default function Home() {
             <div className="module-hero centered">
               <p className="overline">DELIBERATE PRACTICE</p>
               <h1>每天进步一点，<br />最终形成新的职业身份。</h1>
-              <p>用主动回忆代替“看懂了”的错觉：闪卡练概念，知识图谱找位置，专项任务练输出。</p>
+              <p>
+                用主动回忆代替“看懂了”的错觉：84
+                张分级闪卡练概念，路线图谱理解依赖，专项任务产出可展示的作品证据。
+              </p>
               <div className="completion-ring">
                 <strong>{knownCards.length}</strong>
                 <span>/ {flashcards.length}<br />闪卡掌握</span>
@@ -1112,12 +1472,49 @@ export default function Home() {
 
             {practiceMode === "flashcards" && (
               <div className="flashcard-lab">
+                <div className="flashcard-toolbar">
+                  <label>
+                    知识模块
+                    <select
+                      value={flashcardModule}
+                      onChange={(event) => setFlashcardModule(event.target.value)}
+                    >
+                      <option value="全部">全部 14 个模块</option>
+                      {knowledge.map((item) => (
+                        <option value={item.id} key={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    难度
+                    <select
+                      value={flashcardDifficulty}
+                      onChange={(event) => setFlashcardDifficulty(event.target.value)}
+                    >
+                      <option>全部</option>
+                      <option>低</option>
+                      <option>中</option>
+                      <option>高</option>
+                    </select>
+                  </label>
+                  <div className="keyboard-hint">
+                    <span>←</span><span>→</span> 切题
+                    <kbd>Space</kbd> 翻面
+                  </div>
+                </div>
                 <div className="flashcard-progress">
                   <span>
-                    CARD {String(flashcardIndex + 1).padStart(2, "0")} / {flashcards.length}
+                    CARD {String(flashcardIndex + 1).padStart(2, "0")} /{" "}
+                    {filteredFlashcards.length}
                   </span>
                   <i>
-                    <b style={{ width: `${((flashcardIndex + 1) / flashcards.length) * 100}%` }} />
+                    <b
+                      style={{
+                        width: `${((flashcardIndex + 1) / filteredFlashcards.length) * 100}%`,
+                      }}
+                    />
                   </i>
                   <em>{knownCards.length} 张已掌握</em>
                 </div>
@@ -1125,19 +1522,48 @@ export default function Home() {
                   className={`flashcard ${flashcardFlipped ? "flipped" : ""}`}
                   onClick={() => setFlashcardFlipped((value) => !value)}
                 >
-                  <small>{flashcards[flashcardIndex].category}</small>
+                  <small>
+                    {currentFlashcard.category}
+                    <b className={`difficulty difficulty-${currentFlashcard.difficulty}`}>
+                      {currentFlashcard.difficulty}难度
+                    </b>
+                  </small>
                   <div className="flashcard-front">
                     <span>问题</span>
-                    <h2>{flashcards[flashcardIndex].front}</h2>
-                    <p>提示：{flashcards[flashcardIndex].hint}</p>
+                    <h2>{currentFlashcard.front}</h2>
+                    <p>提示：{currentFlashcard.hint}</p>
                   </div>
                   <div className="flashcard-back">
                     <span>答案</span>
-                    <h2>{flashcards[flashcardIndex].back}</h2>
-                    <p>点击卡片可返回问题</p>
+                    <h2>{currentFlashcard.back}</h2>
+                    <p>空格键或点击卡片可返回问题</p>
                   </div>
                   <em>{flashcardFlipped ? "查看问题 ↺" : "点击翻面 ↻"}</em>
                 </button>
+                <div className="flashcard-nav">
+                  <button
+                    onClick={() => {
+                      setFlashcardFlipped(false);
+                      setFlashcardIndex(
+                        (index) =>
+                          (index - 1 + filteredFlashcards.length) %
+                          filteredFlashcards.length,
+                      );
+                    }}
+                  >
+                    ← 上一题
+                  </button>
+                  <button
+                    onClick={() => {
+                      setFlashcardFlipped(false);
+                      setFlashcardIndex(
+                        (index) => (index + 1) % filteredFlashcards.length,
+                      );
+                    }}
+                  >
+                    下一题 →
+                  </button>
+                </div>
                 <div className="flashcard-actions">
                   <button onClick={() => rateFlashcard(false)}>还需要练</button>
                   <button className="known" onClick={() => rateFlashcard(true)}>已经掌握</button>
@@ -1149,20 +1575,39 @@ export default function Home() {
               <div className="knowledge-graph-lab">
                 <div className="graph-heading">
                   <div>
-                    <small>INTERACTIVE KNOWLEDGE GRAPH</small>
-                    <h2>看见依赖，才知道下一步学什么。</h2>
+                    <small>INTERACTIVE LEARNING CONSTELLATION</small>
+                    <h2>14 个知识模块，组成一张能力网络。</h2>
                   </div>
-                  <p>点击节点查看它在路线中的作用；连线代表推荐的先修关系。</p>
+                  <div className="graph-summary">
+                    <span><strong>{knowledgeGraph.nodes.length - 1}</strong>知识节点</span>
+                    <span><strong>{knowledgeGraph.edges.length}</strong>依赖关系</span>
+                    <span><strong>{graphUpstream.length}</strong>当前先修</span>
+                  </div>
                 </div>
-                <div className="graph-canvas">
-                  {knowledgeGraph.edges.map(([from, to]) => {
+                <div className="graph-legend">
+                  {["底层", "前端", "应用", "工程", "设计", "质量", "进阶", "结果"].map(
+                    (group) => <span className={`group-${group}`} key={group}>{group}</span>,
+                  )}
+                  <em>点击节点聚焦上下游学习路径</em>
+                </div>
+                <div className="graph-scroll">
+                  <div className="graph-canvas">
+                    <span className="graph-stage stage-one">01 · 基础输入</span>
+                  <span className="graph-stage stage-two">02 · 能力组合</span>
+                  <span className="graph-stage stage-three">03 · 生产约束</span>
+                  <span className="graph-stage stage-four">04 · 产品结果</span>
+                    {knowledgeGraph.edges.map(([from, to]) => {
                     const source = knowledgeGraph.nodes.find((node) => node.id === from)!;
                     const target = knowledgeGraph.nodes.find((node) => node.id === to)!;
                     const deltaX = target.x - source.x;
                     const deltaY = target.y - source.y;
                     return (
                       <i
-                        className="graph-edge"
+                        className={`graph-edge ${
+                          selectedGraphNode === from || selectedGraphNode === to
+                            ? "active"
+                            : ""
+                        }`}
                         key={`${from}-${to}`}
                         style={{
                           left: `${source.x}%`,
@@ -1172,55 +1617,100 @@ export default function Home() {
                         }}
                       />
                     );
-                  })}
-                  {knowledgeGraph.nodes.map((node) => (
+                    })}
+                    {knowledgeGraph.nodes.map((node) => (
                     <button
                       key={node.id}
-                      className={`${node.group === "结果" ? "destination" : ""} ${selectedGraphNode === node.id ? "active" : ""}`}
+                      className={`group-${node.group} ${
+                        node.group === "结果" ? "destination" : ""
+                      } ${selectedGraphNode === node.id ? "active" : ""} ${
+                        graphRelated.has(node.id) ? "related" : "muted"
+                      }`}
                       style={{ left: `${node.x}%`, top: `${node.y}%` }}
                       onClick={() => setSelectedGraphNode(node.id)}
                     >
+                      <i />
                       <span>{node.label}</span>
                       <small>{node.group}</small>
                     </button>
-                  ))}
+                    ))}
+                  </div>
                 </div>
                 <div className="graph-inspector">
                   <small>当前节点</small>
-                  <strong>
-                    {knowledgeGraph.nodes.find((node) => node.id === selectedGraphNode)?.label}
-                  </strong>
-                  <p>
-                    {selectedGraphNode === "product"
-                      ? "这是最终目标：把模型、界面、数据、评测、安全和运维组合成可被真实用户使用的产品。"
-                      : `先掌握与该节点相连的上游知识，再用一个可运行的小项目验证。它会直接影响 ${
-                          knowledgeGraph.edges.filter(([from]) => from === selectedGraphNode).length
-                        } 个后续节点。`}
-                  </p>
+                  <strong>{selectedGraph.label}</strong>
+                  <p>{selectedGraph.description}</p>
+                  <div className="graph-relations">
+                    <section>
+                      <small>建议先修</small>
+                      {graphUpstream.length ? graphUpstream.map((id) => (
+                        <button key={id} onClick={() => setSelectedGraphNode(id)}>
+                          {knowledgeGraph.nodes.find((node) => node.id === id)?.label}
+                        </button>
+                      )) : <span>可直接开始</span>}
+                    </section>
+                    <section>
+                      <small>继续前往</small>
+                      {graphDownstream.length ? graphDownstream.map((id) => (
+                        <button key={id} onClick={() => setSelectedGraphNode(id)}>
+                          {knowledgeGraph.nodes.find((node) => node.id === id)?.label}
+                        </button>
+                      )) : <span>形成最终能力</span>}
+                    </section>
+                  </div>
                   <button onClick={() => switchTab("roadmap")}>在路线图中学习</button>
                 </div>
               </div>
             )}
 
             {practiceMode === "drills" && (
-              <div className="practice-grid">
-                {practices.map((practice, index) => {
-                  const done = completedPractice.includes(practice.tag);
-                  return (
-                    <article className={done ? "done" : ""} key={practice.tag}>
-                      <button
-                        onClick={() => togglePractice(practice.tag)}
-                        aria-label={`${done ? "取消完成" : "标记完成"} ${practice.tag}`}
-                      >
-                        {done ? "✓" : ""}
-                      </button>
-                      <small>0{index + 1} · {practice.minutes} MIN</small>
-                      <h2>{practice.tag}</h2>
-                      <p>{practice.task}</p>
-                      <span>{done ? "已完成" : "下一项"}</span>
-                    </article>
-                  );
-                })}
+              <div className="drill-lab">
+                <div className="drill-explainer">
+                  <div>
+                    <small>WHAT IS A DELIBERATE DRILL?</small>
+                    <h2>专项任务不是“看完打卡”，而是一次有验收标准的真实输出。</h2>
+                  </div>
+                  <p>
+                    每个任务对应学习路线中的一个知识模块。完成后你会得到代码、图、测试集、讲解录音或决策文档——这些既能暴露薄弱点，也能成为作品集和面试证据。
+                  </p>
+                  <div>
+                    <span><b>1</b>选一个模块</span>
+                    <span><b>2</b>限时产出</span>
+                    <span><b>3</b>按标准自检</span>
+                  </div>
+                </div>
+                <div className="practice-grid">
+                  {practices.map((practice, index) => {
+                    const done = completedPractice.includes(practice.id);
+                    return (
+                      <article className={done ? "done" : ""} key={practice.id}>
+                        <button
+                          onClick={() => togglePractice(practice.id)}
+                          aria-label={`${done ? "取消完成" : "标记完成"} ${practice.tag}`}
+                        >
+                          {done ? "✓" : ""}
+                        </button>
+                        <small>
+                          {String(index + 1).padStart(2, "0")} · {practice.minutes} MIN ·{" "}
+                          {practice.difficulty}
+                        </small>
+                        <h2>{practice.tag}</h2>
+                        <p>{practice.task}</p>
+                        <section>
+                          <strong>交付物</strong>
+                          <span>{practice.deliverable}</span>
+                        </section>
+                        <details>
+                          <summary>查看完成标准</summary>
+                          {practice.criteria.map((criterion) => (
+                            <p key={criterion}>✓ {criterion}</p>
+                          ))}
+                        </details>
+                        <em>{done ? "已完成 · 可再次练习" : "产出后再标记完成"}</em>
+                      </article>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
@@ -1260,7 +1750,7 @@ export default function Home() {
 
       <footer className="site-footer">
         <span>Frontend to AI</span>
-        <p>14 个知识模块 · 100 条岗位观察 · 52 组面经样本 · 更新于 2026-07-29</p>
+        <p>14 个知识模块 · 100 条岗位观察 · 52 组面经样本 · 更新于 2026-07-30</p>
         <button onClick={() => switchTab("home")}>返回概览 ↑</button>
       </footer>
     </div>
