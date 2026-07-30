@@ -1,21 +1,31 @@
 "use client";
+/* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps, react-hooks/purity */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   flashcards,
-  interviewSources,
-  jobs,
   knowledge,
   practices,
-  questions,
   rolePaths,
   type ExperienceId,
   type QuestionV3,
 } from "./data-v3";
+import {
+  companySources,
+  interviewEvidence,
+  jobSignals,
+  tracedQuestions,
+} from "./research-v4";
 
 type TabId = "home" | "roadmap" | "roles" | "interview" | "practice";
 type RoadmapSortKey = "importance" | "difficulty" | "days";
 type ResourceSortKey = "ease" | "professional";
+type JobSortKey = "match" | "captured";
+type InterviewMode = "practice" | "formal";
+type PracticeMode = "flashcards" | "graph" | "drills";
+type ApplicationStatus = "收藏" | "已投递" | "面试中" | "暂不合适";
+type FlashcardRating = "again" | "hard" | "good" | "easy";
+
 type ReviewResult = {
   score: number;
   structure: number;
@@ -26,6 +36,7 @@ type ReviewResult = {
   improvements: { point: string; example: string }[];
   annotations: { quote: string; type: "excellent"; reason: string }[];
 };
+
 type InterviewAttempt = {
   id: string;
   questionId: number;
@@ -34,10 +45,34 @@ type InterviewAttempt = {
   createdAt: string;
   duration: number;
   review: ReviewResult;
+  valid: boolean;
+};
+
+type FlashcardSchedule = {
+  level: number;
+  due: string;
+  streak: number;
+  lastRating: FlashcardRating;
+};
+
+type DrillReview = {
+  score: number;
+  strengths: string[];
+  improvements: string[];
+  nextAction: string;
+  engine: "local" | "model";
+};
+
+type DrillAttempt = {
+  id: string;
+  practiceId: string;
+  submission: string;
+  createdAt: string;
+  review: DrillReview;
 };
 
 const tabs: { id: TabId; label: string }[] = [
-  { id: "home", label: "概览" },
+  { id: "home", label: "工作台" },
   { id: "roadmap", label: "学习路线" },
   { id: "roles", label: "岗位机会" },
   { id: "interview", label: "面试训练" },
@@ -55,41 +90,49 @@ const experienceLevels: {
   { id: "senior", label: "5 年以上", caption: "用业务与架构换赛道", multiplier: 0.82 },
 ];
 
-const milestones = [
-  { days: "0—30", title: "理解", text: "Python、LLM 原理、流式 UI；做出第一个可用 AI 界面。" },
-  { days: "31—60", title: "连接", text: "接入 RAG、引用与工具调用，把模型连接真实数据。" },
-  { days: "61—90", title: "测量", text: "建立黄金集、trace、延迟和成本指标，拒绝凭感觉优化。" },
-  { days: "91—120", title: "可靠", text: "补状态、幂等、重试、降级、安全与人工确认。" },
-  { days: "121—150", title: "上线", text: "容器化、监控和灰度；邀请真实用户使用并记录失败。" },
-  { days: "151—180", title: "表达", text: "作品集、架构文档、指标复盘与高频模拟面试。" },
+const mindMapBranches = [
+  { id: "foundation", title: "基础认知", ids: ["ml", "llm", "python"] },
+  { id: "application", title: "AI 应用", ids: ["prompt", "rag", "agent", "finetune"] },
+  { id: "experience", title: "体验界面", ids: ["ai-ui", "ai-ux", "next"] },
+  { id: "production", title: "生产交付", ids: ["backend", "eval", "security", "llmops"] },
 ];
 
-const mindMapBranches = [
-  {
-    id: "foundation",
-    title: "01 · 基础认知",
-    caption: "先理解模型，再进入工程",
-    knowledgeIds: ["ml", "llm", "python"],
-  },
-  {
-    id: "application",
-    title: "02 · AI 应用",
-    caption: "让模型连接知识与工具",
-    knowledgeIds: ["prompt", "rag", "agent", "finetune"],
-  },
-  {
-    id: "experience",
-    title: "03 · 体验界面",
-    caption: "发挥前端的迁移优势",
-    knowledgeIds: ["ai-ui", "ai-ux", "next"],
-  },
-  {
-    id: "production",
-    title: "04 · 生产交付",
-    caption: "从 Demo 走向可靠产品",
-    knowledgeIds: ["backend", "eval", "security", "llmops"],
-  },
-];
+const prerequisites: Record<string, string[]> = {
+  ml: [],
+  llm: ["ml"],
+  python: [],
+  prompt: ["llm"],
+  rag: ["python", "llm", "prompt"],
+  agent: ["python", "prompt", "rag"],
+  finetune: ["ml", "llm", "python"],
+  "ai-ui": ["next", "prompt"],
+  "ai-ux": ["ai-ui"],
+  next: [],
+  backend: ["python"],
+  eval: ["ml", "rag"],
+  security: ["agent", "backend"],
+  llmops: ["backend", "eval"],
+};
+
+const weakKnowledgeMap: Record<string, string> = {
+  项目深挖: "eval",
+  RAG: "rag",
+  Agent: "agent",
+  可靠性: "backend",
+  评测: "eval",
+  "流式 UI": "ai-ui",
+  上下文: "prompt",
+  安全: "security",
+  高并发: "backend",
+  "AI UX": "ai-ux",
+  工具协议: "agent",
+  "LLM 原理": "llm",
+  前端性能: "ai-ui",
+  算法: "ml",
+};
+
+const applicationStatuses: ApplicationStatus[] = ["收藏", "已投递", "面试中", "暂不合适"];
+const today = () => new Date().toISOString().slice(0, 10);
 
 function formatTime(seconds: number) {
   const minute = Math.floor(seconds / 60)
@@ -99,194 +142,322 @@ function formatTime(seconds: number) {
   return `${minute}:${rest}`;
 }
 
-function Rating({ value, label }: { value: number; label: string }) {
-  return (
-    <span className="rating" aria-label={`${label} ${value} / 5`}>
-      {Array.from({ length: 5 }, (_, index) => (
-        <i className={index < value ? "filled" : ""} key={index} />
-      ))}
-    </span>
-  );
+function safeRead<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const value = window.localStorage.getItem(key);
+    return value ? (JSON.parse(value) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveLocal(key: string, value: unknown) {
+  window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function isMeaningfulAnswer(value: string) {
+  const compact = value.replace(/\s/g, "");
+  if (compact.length < 40) return false;
+  if (/^\d+$/.test(compact)) return false;
+  if (/^(.)\1+$/.test(compact)) return false;
+  const unique = new Set(compact).size;
+  return unique >= Math.min(12, Math.ceil(compact.length * 0.08));
+}
+
+function scoreLabel(value: number) {
+  if (value >= 85) return "优秀";
+  if (value >= 70) return "可用";
+  if (value >= 55) return "待加强";
+  return "需重答";
 }
 
 function ScoreTrend({ attempts }: { attempts: InterviewAttempt[] }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !attempts.length) return;
-    const render = () => {
-      const width = canvas.clientWidth;
-      const height = canvas.clientHeight;
-      const ratio = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = width * ratio;
-      canvas.height = height * ratio;
-      const context = canvas.getContext("2d");
-      if (!context) return;
-      context.scale(ratio, ratio);
-      context.clearRect(0, 0, width, height);
-
-      const padding = { top: 24, right: 24, bottom: 34, left: 38 };
-      const chartWidth = width - padding.left - padding.right;
-      const chartHeight = height - padding.top - padding.bottom;
-      context.font = "10px ui-monospace, monospace";
-      context.textAlign = "right";
-      context.textBaseline = "middle";
-      [50, 75, 100].forEach((score) => {
-        const y = padding.top + ((100 - score) / 50) * chartHeight;
-        context.strokeStyle = "rgba(118, 118, 128, 0.16)";
-        context.lineWidth = 1;
-        context.beginPath();
-        context.moveTo(padding.left, y);
-        context.lineTo(width - padding.right, y);
-        context.stroke();
-        context.fillStyle = "#929298";
-        context.fillText(String(score), padding.left - 9, y);
-      });
-
-      const points = attempts.map((attempt, index) => ({
-        x:
-          attempts.length === 1
-            ? padding.left + chartWidth / 2
-            : padding.left + (index / (attempts.length - 1)) * chartWidth,
-        y: padding.top + ((100 - Math.max(50, attempt.review.score)) / 50) * chartHeight,
-        score: attempt.review.score,
-      }));
-
-      const gradient = context.createLinearGradient(0, padding.top, 0, height);
-      gradient.addColorStop(0, "rgba(0, 113, 227, 0.28)");
-      gradient.addColorStop(1, "rgba(0, 113, 227, 0)");
-      context.beginPath();
-      context.moveTo(points[0].x, padding.top + chartHeight);
-      points.forEach((point) => context.lineTo(point.x, point.y));
-      context.lineTo(points.at(-1)!.x, padding.top + chartHeight);
-      context.closePath();
-      context.fillStyle = gradient;
-      context.fill();
-
-      context.beginPath();
-      points.forEach((point, index) => {
-        if (index === 0) context.moveTo(point.x, point.y);
-        else context.lineTo(point.x, point.y);
-      });
-      context.strokeStyle = "#0071e3";
-      context.lineWidth = 3;
-      context.lineJoin = "round";
-      context.lineCap = "round";
-      context.stroke();
-
-      points.forEach((point, index) => {
-        context.beginPath();
-        context.arc(point.x, point.y, 5, 0, Math.PI * 2);
-        context.fillStyle = "white";
-        context.fill();
-        context.strokeStyle = "#0071e3";
-        context.lineWidth = 3;
-        context.stroke();
-        context.fillStyle = "#1d1d1f";
-        context.textAlign = "center";
-        context.fillText(String(point.score), point.x, point.y - 14);
-        context.fillStyle = "#929298";
-        context.fillText(`第 ${index + 1} 次`, point.x, height - 13);
-      });
-    };
-
-    render();
-    const observer = new ResizeObserver(render);
-    observer.observe(canvas);
-    return () => observer.disconnect();
-  }, [attempts]);
-
+  if (!attempts.length) return <p className="empty-inline">完成有效回答后显示得分曲线。</p>;
+  const max = Math.max(1, attempts.length - 1);
+  const points = attempts.map((attempt, index) => {
+    const x = 4 + (index / max) * 92;
+    const y = 94 - attempt.review.score * 0.86;
+    return `${x},${y}`;
+  });
   return (
-    <canvas
-      className="score-trend-canvas"
-      ref={canvasRef}
-      role="img"
-      aria-label={`最近 ${attempts.length} 次回答得分：${attempts
-        .map((attempt) => attempt.review.score)
-        .join("、")}`}
-    />
+    <div className="trend-chart" role="img" aria-label={`得分：${attempts.map((item) => item.review.score).join("、")}`}>
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        <line x1="4" x2="96" y1="30" y2="30" />
+        <line x1="4" x2="96" y1="60" y2="60" />
+        <line x1="4" x2="96" y1="90" y2="90" />
+        <polyline points={points.join(" ")} />
+        {attempts.map((attempt, index) => {
+          const x = 4 + (index / max) * 92;
+          const y = 94 - attempt.review.score * 0.86;
+          return <circle key={attempt.id} cx={x} cy={y} r="2.2" />;
+        })}
+      </svg>
+      <div className="trend-labels">
+        {attempts.map((attempt, index) => (
+          <span key={attempt.id}>
+            <b>{attempt.review.score}</b>
+            <small>第 {index + 1} 次</small>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Segmented<T extends string>({
+  value,
+  items,
+  onChange,
+  label,
+}: {
+  value: T;
+  items: { value: T; label: string }[];
+  onChange: (value: T) => void;
+  label: string;
+}) {
+  return (
+    <div className="segmented" role="tablist" aria-label={label}>
+      {items.map((item) => (
+        <button
+          key={item.value}
+          className={value === item.value ? "active" : ""}
+          onClick={() => onChange(item.value)}
+          role="tab"
+          aria-selected={value === item.value}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [experience, setExperience] = useState<ExperienceId>("growing");
+  const [targetRole, setTargetRole] = useState(rolePaths[0].id);
+  const [globalSearch, setGlobalSearch] = useState("");
   const [roadmapSort, setRoadmapSort] = useState<RoadmapSortKey>("importance");
-  const [roadmapSortDirection, setRoadmapSortDirection] = useState<"asc" | "desc">(
-    "desc",
-  );
-  const [resourceSort, setResourceSort] = useState<ResourceSortKey>("ease");
+  const [roadmapSortDirection, setRoadmapSortDirection] = useState<"asc" | "desc">("desc");
   const [roadmapCategory, setRoadmapCategory] = useState("全部");
-  const [expandedKnowledge, setExpandedKnowledge] = useState<string>("ai-ui");
+  const [selectedKnowledgeId, setSelectedKnowledgeId] = useState<string | null>(null);
+  const [resourceSort, setResourceSort] = useState<ResourceSortKey>("ease");
+  const [resourceRatings, setResourceRatings] = useState<Record<string, number>>({});
+  const [knowledgeProgress, setKnowledgeProgress] = useState<Record<string, number>>({});
+  const [learningPlan, setLearningPlan] = useState<string[]>([]);
   const [roleFilter, setRoleFilter] = useState("全部");
+  const [companyFilter, setCompanyFilter] = useState("全部");
+  const [evidenceFilter, setEvidenceFilter] = useState("全部");
   const [jobSearch, setJobSearch] = useState("");
-  const [jobVisibleCount, setJobVisibleCount] = useState(12);
+  const [jobSort, setJobSort] = useState<JobSortKey>("match");
+  const [jobVisibleCount, setJobVisibleCount] = useState(20);
+  const [applications, setApplications] = useState<Record<string, ApplicationStatus>>({});
+  const [interviewMode, setInterviewMode] = useState<InterviewMode>("practice");
   const [questionRole, setQuestionRole] = useState("全部");
-  const [selectedQuestion, setSelectedQuestion] = useState<QuestionV3>(questions[0]);
+  const [selectedQuestion, setSelectedQuestion] = useState<QuestionV3>(tracedQuestions[0]);
+  const [formalQuestionIds, setFormalQuestionIds] = useState<number[]>([]);
+  const [formalIndex, setFormalIndex] = useState(0);
   const [answer, setAnswer] = useState("");
   const [inputMode, setInputMode] = useState<"voice" | "text">("voice");
   const [isListening, setIsListening] = useState(false);
   const [voiceInterim, setVoiceInterim] = useState("");
-  const [voiceMessage, setVoiceMessage] = useState("点击麦克风开始口述，识别结果会实时转成文字。");
+  const [voiceMessage, setVoiceMessage] = useState("点击麦克风开始口述，转写内容会实时出现。");
   const [seconds, setSeconds] = useState(0);
   const [isReviewing, setIsReviewing] = useState(false);
   const [modelError, setModelError] = useState("");
   const [review, setReview] = useState<ReviewResult | null>(null);
   const [answerHistory, setAnswerHistory] = useState<InterviewAttempt[]>([]);
-  const [referenceMode, setReferenceMode] = useState<"structured" | "full">(
-    "structured",
-  );
-  const [completedPractice, setCompletedPractice] = useState<string[]>([]);
-  const [practiceMode, setPracticeMode] = useState<"flashcards" | "graph" | "drills">(
-    "flashcards",
-  );
+  const [referenceMode, setReferenceMode] = useState<"structured" | "full">("structured");
+  const [practiceMode, setPracticeMode] = useState<PracticeMode>("flashcards");
   const [flashcardModule, setFlashcardModule] = useState("全部");
   const [flashcardDifficulty, setFlashcardDifficulty] = useState("全部");
   const [flashcardIndex, setFlashcardIndex] = useState(0);
   const [flashcardFlipped, setFlashcardFlipped] = useState(false);
-  const [knownCards, setKnownCards] = useState<string[]>([]);
+  const [flashcardSchedule, setFlashcardSchedule] = useState<Record<string, FlashcardSchedule>>({});
   const [selectedGraphNode, setSelectedGraphNode] = useState("ai-ui");
+  const [selectedDrillId, setSelectedDrillId] = useState(practices[0].id);
+  const [drillSubmission, setDrillSubmission] = useState("");
+  const [drillReview, setDrillReview] = useState<DrillReview | null>(null);
+  const [drillAttempts, setDrillAttempts] = useState<DrillAttempt[]>([]);
+  const [isDrillReviewing, setIsDrillReviewing] = useState(false);
+  const speechRef = useRef<{ stop: () => void } | null>(null);
 
   const level = experienceLevels.find((item) => item.id === experience)!;
+  const currentRole = rolePaths.find((role) => role.id === targetRole) ?? rolePaths[0];
+  const selectedKnowledge = knowledge.find((item) => item.id === selectedKnowledgeId) ?? null;
+  const selectedGraph = knowledge.find((item) => item.id === selectedGraphNode) ?? knowledge[0];
+  const selectedDrill = practices.find((item) => item.id === selectedDrillId) ?? practices[0];
 
   useEffect(() => {
-    const hash = window.location.hash.replace("#", "") as TabId;
+    const [hash, detail] = window.location.hash.replace("#", "").split(":") as [
+      TabId,
+      string | undefined,
+    ];
     if (tabs.some((tab) => tab.id === hash)) setActiveTab(hash);
-    const savedExperience = window.localStorage.getItem("frontend-ai-experience");
-    if (savedExperience && experienceLevels.some((item) => item.id === savedExperience)) {
-      setExperience(savedExperience as ExperienceId);
+    if (hash === "roadmap" && detail) setSelectedKnowledgeId(detail);
+    if (hash === "roles" && detail) setRoleFilter(decodeURIComponent(detail));
+    if (hash === "interview" && detail) {
+      const question = tracedQuestions.find((item) => String(item.id) === detail);
+      if (question) setSelectedQuestion(question);
     }
-    const savedPractice = window.localStorage.getItem("frontend-ai-practice-v2");
-    if (savedPractice) setCompletedPractice(JSON.parse(savedPractice) as string[]);
-    const savedHistory = window.localStorage.getItem("frontend-ai-interview-history-v1");
-    if (savedHistory) {
-      try {
-        setAnswerHistory(JSON.parse(savedHistory) as InterviewAttempt[]);
-      } catch {
-        window.localStorage.removeItem("frontend-ai-interview-history-v1");
-      }
-    }
-    const savedCards = window.localStorage.getItem("frontend-ai-known-cards-v1");
-    if (savedCards) {
-      try {
-        setKnownCards(JSON.parse(savedCards) as string[]);
-      } catch {
-        window.localStorage.removeItem("frontend-ai-known-cards-v1");
-      }
-    }
+    setExperience(safeRead("frontend-ai-experience", "growing"));
+    setTargetRole(safeRead("frontend-ai-target-role-v4", rolePaths[0].id));
+    setResourceRatings(safeRead("frontend-ai-resource-ratings-v4", {}));
+    setKnowledgeProgress(safeRead("frontend-ai-knowledge-progress-v4", {}));
+    setLearningPlan(safeRead("frontend-ai-learning-plan-v4", []));
+    setApplications(safeRead("frontend-ai-applications-v4", {}));
+    setAnswerHistory(safeRead("frontend-ai-interview-history-v2", []));
+    setFlashcardSchedule(safeRead("frontend-ai-flashcard-schedule-v4", {}));
+    setDrillAttempts(safeRead("frontend-ai-drill-history-v4", []));
   }, []);
 
   useEffect(() => {
     if (activeTab !== "interview" || review) return;
     const timer = window.setInterval(() => setSeconds((value) => value + 1), 1000);
     return () => window.clearInterval(timer);
-  }, [activeTab, review, selectedQuestion]);
+  }, [activeTab, review, selectedQuestion.id]);
 
-  function switchTab(tab: TabId) {
+  const sortedKnowledge = useMemo(
+    () =>
+      knowledge
+        .filter((item) => roadmapCategory === "全部" || item.category === roadmapCategory)
+        .map((item) => ({
+          ...item,
+          adjustedDays: Math.max(3, Math.round(item.days * level.multiplier)),
+        }))
+        .sort((a, b) => {
+          const delta =
+            roadmapSort === "days"
+              ? a.adjustedDays - b.adjustedDays
+              : a[roadmapSort] - b[roadmapSort];
+          return roadmapSortDirection === "desc" ? -delta : delta;
+        }),
+    [level.multiplier, roadmapCategory, roadmapSort, roadmapSortDirection],
+  );
+
+  const filteredJobs = useMemo(() => {
+    const query = jobSearch.trim().toLowerCase();
+    return jobSignals
+      .filter((job) => {
+        const roleMatch = roleFilter === "全部" || job.role === roleFilter;
+        const companyMatch = companyFilter === "全部" || job.company === companyFilter;
+        const evidenceMatch = evidenceFilter === "全部" || job.evidenceLevel === evidenceFilter;
+        const text = `${job.company}${job.title}${job.summary}${job.keywords.join("")}`.toLowerCase();
+        return roleMatch && companyMatch && evidenceMatch && (!query || text.includes(query));
+      })
+      .sort((a, b) => {
+        const evidenceDelta =
+          Number(b.evidenceLevel === "精确 JD") -
+          Number(a.evidenceLevel === "精确 JD");
+        if (evidenceDelta) return evidenceDelta;
+        return jobSort === "match"
+          ? b.match - a.match
+          : b.captured.localeCompare(a.captured);
+      });
+  }, [companyFilter, evidenceFilter, jobSearch, jobSort, roleFilter]);
+
+  const filteredQuestions = useMemo(
+    () =>
+      tracedQuestions
+        .filter((question) => questionRole === "全部" || question.role.includes(questionRole))
+        .sort((a, b) => b.frequency - a.frequency),
+    [questionRole],
+  );
+
+  const validAttempts = useMemo(
+    () => answerHistory.filter((attempt) => attempt.valid !== false),
+    [answerHistory],
+  );
+
+  const questionAttempts = useMemo(
+    () =>
+      validAttempts
+        .filter((attempt) => attempt.questionId === selectedQuestion.id)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    [selectedQuestion.id, validAttempts],
+  );
+
+  const averages = useMemo(() => {
+    if (!validAttempts.length) return { score: 0, structure: 0, evidence: 0, depth: 0 };
+    const sum = validAttempts.reduce(
+      (acc, item) => ({
+        score: acc.score + item.review.score,
+        structure: acc.structure + item.review.structure,
+        evidence: acc.evidence + item.review.evidence,
+        depth: acc.depth + item.review.depth,
+      }),
+      { score: 0, structure: 0, evidence: 0, depth: 0 },
+    );
+    return Object.fromEntries(
+      Object.entries(sum).map(([key, value]) => [key, Math.round(value / validAttempts.length)]),
+    ) as typeof sum;
+  }, [validAttempts]);
+
+  const weakestDimension = (
+    [
+      ["structure", "结构", averages.structure],
+      ["evidence", "证据", averages.evidence],
+      ["depth", "深度", averages.depth],
+    ] as const
+  ).sort((a, b) => a[2] - b[2])[0];
+
+  const dueFlashcards = useMemo(() => {
+    const date = today();
+    return flashcards.filter((card) => {
+      const schedule = flashcardSchedule[card.id];
+      return !schedule || schedule.due <= date;
+    });
+  }, [flashcardSchedule]);
+
+  const filteredFlashcards = useMemo(() => {
+    const source = dueFlashcards.length ? dueFlashcards : flashcards;
+    return source.filter(
+      (card) =>
+        (flashcardModule === "全部" || card.knowledgeId === flashcardModule) &&
+        (flashcardDifficulty === "全部" || card.difficulty === flashcardDifficulty),
+    );
+  }, [dueFlashcards, flashcardDifficulty, flashcardModule]);
+
+  const currentFlashcard = filteredFlashcards[flashcardIndex] ?? flashcards[0];
+  const masteredCards = Object.values(flashcardSchedule).filter((item) => item.level >= 3).length;
+  const completedKnowledge = Object.values(knowledgeProgress).filter((value) => value >= 1).length;
+  const savedJobs = Object.values(applications).filter((status) => status !== "暂不合适").length;
+  const nextKnowledge =
+    learningPlan
+      .map((id) => knowledge.find((item) => item.id === id))
+      .find((item) => item && (knowledgeProgress[item.id] ?? 0) < 1) ??
+    knowledge.find((item) => (knowledgeProgress[item.id] ?? 0) < 1) ??
+    knowledge[0];
+
+  const globalResults = useMemo(() => {
+    const query = globalSearch.trim().toLowerCase();
+    if (!query) return [];
+    return [
+      ...knowledge
+        .filter((item) => `${item.name}${item.why}${item.category}`.toLowerCase().includes(query))
+        .slice(0, 4)
+        .map((item) => ({ type: "知识", label: item.name, tab: "roadmap" as TabId, id: item.id })),
+      ...rolePaths
+        .filter((item) => `${item.name}${item.description}${item.keywords.join("")}`.toLowerCase().includes(query))
+        .slice(0, 3)
+        .map((item) => ({ type: "岗位", label: item.name, tab: "roles" as TabId, id: item.id })),
+      ...tracedQuestions
+        .filter((item) => `${item.question}${item.category}`.toLowerCase().includes(query))
+        .slice(0, 4)
+        .map((item) => ({ type: "面试题", label: item.question, tab: "interview" as TabId, id: String(item.id) })),
+    ].slice(0, 8);
+  }, [globalSearch]);
+
+  function switchTab(tab: TabId, detail?: string) {
     setActiveTab(tab);
-    window.history.replaceState(null, "", `#${tab}`);
+    window.history.replaceState(
+      null,
+      "",
+      `#${tab}${detail ? `:${encodeURIComponent(detail)}` : ""}`,
+    );
     window.scrollTo({ top: 0, behavior: "smooth" });
+    setGlobalSearch("");
   }
 
   function chooseExperience(value: ExperienceId) {
@@ -294,96 +465,58 @@ export default function Home() {
     window.localStorage.setItem("frontend-ai-experience", value);
   }
 
-  const sortedKnowledge = useMemo(() => {
-    return knowledge
-      .filter((item) => roadmapCategory === "全部" || item.category === roadmapCategory)
-      .map((item) => ({
-        ...item,
-        adjustedDays: Math.max(3, Math.round(item.days * level.multiplier)),
-      }))
-      .sort((a, b) => {
-        const delta =
-          roadmapSort === "days"
-            ? a.adjustedDays - b.adjustedDays
-            : a[roadmapSort] - b[roadmapSort];
-        return roadmapSortDirection === "desc" ? -delta : delta;
-      });
-  }, [level.multiplier, roadmapCategory, roadmapSort, roadmapSortDirection]);
+  function chooseTargetRole(value: string) {
+    setTargetRole(value);
+    window.localStorage.setItem("frontend-ai-target-role-v4", value);
+  }
 
-  const filteredJobs = useMemo(() => {
-    const query = jobSearch.trim().toLowerCase();
-    return jobs.filter((job) => {
-      const roleMatch = roleFilter === "全部" || job.role === roleFilter;
-      const text = `${job.company}${job.title}${job.team}${job.keywords.join("")}`.toLowerCase();
-      return roleMatch && (!query || text.includes(query));
-    });
-  }, [jobSearch, roleFilter]);
+  function openSearchResult(result: { tab: TabId; id: string }) {
+    if (result.tab === "roadmap") setSelectedKnowledgeId(result.id);
+    if (result.tab === "roles") {
+      setRoleFilter(result.id);
+      chooseTargetRole(result.id);
+    }
+    if (result.tab === "interview") {
+      const question = tracedQuestions.find((item) => String(item.id) === result.id);
+      if (question) chooseQuestion(question);
+    }
+    switchTab(result.tab, result.id);
+  }
 
-  const filteredQuestions = useMemo(
-    () =>
-      questions.filter(
-        (question) => questionRole === "全部" || question.role.includes(questionRole),
-      ),
-    [questionRole],
-  );
+  function toggleRoadmapSort(key: RoadmapSortKey) {
+    if (roadmapSort === key) {
+      setRoadmapSortDirection((direction) => (direction === "desc" ? "asc" : "desc"));
+    } else {
+      setRoadmapSort(key);
+      setRoadmapSortDirection("desc");
+    }
+  }
 
-  const questionAttempts = useMemo(
-    () =>
-      answerHistory
-        .filter((attempt) => attempt.questionId === selectedQuestion.id)
-        .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-    [answerHistory, selectedQuestion.id],
-  );
+  function updateKnowledgeProgress(id: string, value: number) {
+    const next = { ...knowledgeProgress, [id]: value };
+    setKnowledgeProgress(next);
+    saveLocal("frontend-ai-knowledge-progress-v4", next);
+  }
 
-  const filteredFlashcards = useMemo(
-    () =>
-      flashcards.filter(
-        (card) =>
-          (flashcardModule === "全部" || card.knowledgeId === flashcardModule) &&
-          (flashcardDifficulty === "全部" || card.difficulty === flashcardDifficulty),
-      ),
-    [flashcardDifficulty, flashcardModule],
-  );
-  const currentFlashcard = filteredFlashcards[flashcardIndex] ?? flashcards[0];
-  const selectedGraph = knowledge.find((item) => item.id === selectedGraphNode)!;
-  const selectedMindMapBranch = mindMapBranches.find((branch) =>
-    branch.knowledgeIds.includes(selectedGraphNode),
-  )!;
+  function toggleLearningPlan(id: string) {
+    const next = learningPlan.includes(id)
+      ? learningPlan.filter((item) => item !== id)
+      : [...learningPlan, id];
+    setLearningPlan(next);
+    saveLocal("frontend-ai-learning-plan-v4", next);
+  }
 
-  useEffect(() => {
-    setFlashcardIndex(0);
-    setFlashcardFlipped(false);
-  }, [flashcardDifficulty, flashcardModule]);
+  function rateResource(key: string, value: number) {
+    const next = { ...resourceRatings, [key]: value };
+    setResourceRatings(next);
+    saveLocal("frontend-ai-resource-ratings-v4", next);
+  }
 
-  useEffect(() => {
-    if (activeTab !== "practice" || practiceMode !== "flashcards") return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (
-        target?.matches("input, textarea, select, button") ||
-        target?.isContentEditable
-      ) {
-        return;
-      }
-      if (event.key === "ArrowLeft") {
-        setFlashcardFlipped(false);
-        setFlashcardIndex(
-          (index) =>
-            (index - 1 + filteredFlashcards.length) % filteredFlashcards.length,
-        );
-      }
-      if (event.key === "ArrowRight") {
-        setFlashcardFlipped(false);
-        setFlashcardIndex((index) => (index + 1) % filteredFlashcards.length);
-      }
-      if (event.code === "Space") {
-        event.preventDefault();
-        setFlashcardFlipped((value) => !value);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activeTab, filteredFlashcards.length, practiceMode]);
+  function updateApplication(id: string, status: ApplicationStatus) {
+    const next = { ...applications, [id]: status };
+    setApplications(next);
+    saveLocal("frontend-ai-applications-v4", next);
+  }
 
   function chooseQuestion(question: QuestionV3) {
     setSelectedQuestion(question);
@@ -395,24 +528,62 @@ export default function Home() {
     setReferenceMode("structured");
     setSeconds(0);
     setIsListening(false);
+    speechRef.current?.stop();
   }
 
-  function toggleRoadmapSort(key: RoadmapSortKey) {
-    if (roadmapSort === key) {
-      setRoadmapSortDirection((direction) => (direction === "desc" ? "asc" : "desc"));
+  function startFormalInterview() {
+    const pool = filteredQuestions.length >= 5 ? filteredQuestions : tracedQuestions;
+    const ids = [...pool]
+      .sort((a, b) => b.frequency - a.frequency)
+      .slice(0, 5)
+      .map((item) => item.id);
+    setFormalQuestionIds(ids);
+    setFormalIndex(0);
+    setInterviewMode("formal");
+    const first = tracedQuestions.find((item) => item.id === ids[0]) ?? tracedQuestions[0];
+    chooseQuestion(first);
+  }
+
+  function exitFormalInterview() {
+    setInterviewMode("practice");
+    setFormalQuestionIds([]);
+    setFormalIndex(0);
+    setReview(null);
+    setAnswer("");
+  }
+
+  function nextQuestion() {
+    if (interviewMode === "formal" && formalQuestionIds.length) {
+      const nextIndex = formalIndex + 1;
+      if (nextIndex < formalQuestionIds.length) {
+        setFormalIndex(nextIndex);
+        chooseQuestion(
+          tracedQuestions.find((item) => item.id === formalQuestionIds[nextIndex]) ??
+            tracedQuestions[0],
+        );
+      } else {
+        exitFormalInterview();
+      }
       return;
     }
-    setRoadmapSort(key);
-    setRoadmapSortDirection("desc");
+    const current = filteredQuestions.findIndex((question) => question.id === selectedQuestion.id);
+    chooseQuestion(filteredQuestions[(current + 1) % filteredQuestions.length] ?? tracedQuestions[0]);
+  }
+
+  function retryQuestion() {
+    setAnswer("");
+    setReview(null);
+    setModelError("");
+    setVoiceInterim("");
+    setIsListening(false);
+    setIsReviewing(false);
+    setSeconds(0);
   }
 
   function startVoiceInput() {
     type RecognitionEvent = {
       resultIndex: number;
-      results: ArrayLike<{
-        0: { transcript: string };
-        isFinal: boolean;
-      }>;
+      results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }>;
     };
     type Recognition = {
       lang: string;
@@ -429,11 +600,14 @@ export default function Home() {
       SpeechRecognition?: RecognitionConstructor;
       webkitSpeechRecognition?: RecognitionConstructor;
     };
-    const RecognitionApi =
-      voiceWindow.SpeechRecognition ?? voiceWindow.webkitSpeechRecognition;
+    const RecognitionApi = voiceWindow.SpeechRecognition ?? voiceWindow.webkitSpeechRecognition;
     if (!RecognitionApi) {
-      setVoiceMessage("当前浏览器不支持语音识别，已切换到文本输入。");
+      setVoiceMessage("当前浏览器不支持语音识别，已切换为文本输入。");
       setInputMode("text");
+      return;
+    }
+    if (isListening) {
+      speechRef.current?.stop();
       return;
     }
     const recognition = new RecognitionApi();
@@ -464,75 +638,55 @@ export default function Home() {
     recognition.onerror = () => {
       setIsListening(false);
       setVoiceInterim("");
-      setVoiceMessage("没有识别到声音，请检查麦克风权限后重试，或切换文本输入。");
+      setVoiceMessage("没有识别到声音，请检查麦克风权限或切换文本输入。");
     };
     recognition.onend = () => {
       setIsListening(false);
       setVoiceInterim("");
+      speechRef.current = null;
       setVoiceMessage(
         committedTranscript
-          ? `本次语音已实时转写 ${committedTranscript.trim().length} 字，可直接修正或提交。`
-          : "本次没有识别到有效内容，请重试或切换文本输入。",
+          ? `已完成实时转写 ${committedTranscript.trim().length} 字，可修改后提交。`
+          : "本次没有识别到有效内容，请重试。",
       );
     };
+    speechRef.current = recognition;
     recognition.start();
     setIsListening(true);
-    setVoiceMessage("正在聆听…请像真实面试一样完整回答。");
-    window.setTimeout(() => recognition.stop(), 180000);
+    setVoiceMessage("正在实时转写；再次点击麦克风可停止。");
   }
 
-  function buildLocalReview() {
+  function buildLocalReview(): ReviewResult {
     const normalized = answer.toLowerCase();
     const hitCount = selectedQuestion.keywords.filter((keyword) =>
       normalized.includes(keyword.toLowerCase()),
     ).length;
     const coverage = hitCount / selectedQuestion.keywords.length;
     const lengthFactor = Math.min(answer.trim().length / 500, 1);
-    const structure = Math.min(98, Math.round(46 + lengthFactor * 28 + coverage * 24));
+    const structure = Math.min(94, Math.round(42 + lengthFactor * 30 + coverage * 22));
     const evidence = Math.min(
-      98,
-      Math.round(
-        36 +
-          (/\d|%|用户|指标|ms|秒|成本|结果/.test(answer) ? 34 : 0) +
-          coverage * 24,
-      ),
+      94,
+      Math.round(34 + (/\d|%|用户|指标|ms|秒|成本|结果/.test(answer) ? 32 : 0) + coverage * 22),
     );
     const depth = Math.min(
-      98,
-      Math.round(
-        38 +
-          (/(取舍|权衡|失败|边界|复盘|对比|因为)/.test(answer) ? 31 : 0) +
-          coverage * 26,
-      ),
+      94,
+      Math.round(36 + (/(取舍|权衡|失败|边界|复盘|对比|因为)/.test(answer) ? 30 : 0) + coverage * 24),
     );
     return {
-      score: Math.min(96, Math.round(structure * 0.34 + evidence * 0.32 + depth * 0.34)),
+      score: Math.round(structure * 0.34 + evidence * 0.32 + depth * 0.34),
       structure,
       evidence,
       depth,
-      engine: "local" as const,
-      strengths: [
-        hitCount
-          ? `覆盖了 ${hitCount} 个关键概念，核心术语与题目方向一致。`
-          : "已经形成完整回答，可以继续补充更明确的技术关键词。",
-        /\d|%|用户|指标|ms|秒|成本|结果/.test(answer)
-          ? "回答中出现了数据或结果证据，这是可信度最高的部分。"
-          : "表达具备基本结构，下一步需要用数据证明结果。",
-      ],
+      engine: "local",
+      strengths: hitCount ? [`覆盖 ${hitCount} 个关键概念，回答方向与题目一致。`] : [],
       improvements: [
         {
-          point: "补足缺失概念，并说明它们和你的方案有什么关系。",
-          example: `“在${selectedQuestion.reference.evidence[0]}之外，我还会说明 ${selectedQuestion.keywords
-            .filter((keyword) => !normalized.includes(keyword.toLowerCase()))
-            .slice(0, 2)
-            .join("、") || "失败边界与回滚策略"}，因为这决定方案是否能进入生产。”`,
+          point: "补足缺失概念，并说明它们和方案的关系。",
+          example: `“除 ${selectedQuestion.reference.evidence[0]} 外，我还会说明失败边界与回滚策略，因为这决定方案能否进入生产。”`,
         },
-        {
-          point: "增加一个失败样本或没有选择另一方案的原因。",
-          example: selectedQuestion.reference.example,
-        },
+        { point: "增加一个真实失败样本或量化结果。", example: selectedQuestion.reference.example },
       ],
-      annotations: [] as { quote: string; type: "excellent"; reason: string }[],
+      annotations: [],
     };
   }
 
@@ -545,18 +699,20 @@ export default function Home() {
       createdAt: new Date().toISOString(),
       duration: seconds,
       review: nextReview,
+      valid: true,
     };
     setAnswerHistory((items) => {
-      const next = [...items, attempt].slice(-120);
-      window.localStorage.setItem(
-        "frontend-ai-interview-history-v1",
-        JSON.stringify(next),
-      );
+      const next = [...items, attempt].slice(-200);
+      saveLocal("frontend-ai-interview-history-v2", next);
       return next;
     });
   }
 
   async function submitAnswer() {
+    if (!isMeaningfulAnswer(answer)) {
+      setModelError("回答内容过短、重复或缺少有效语义，本次不评分，也不会计入进步曲线。请重新回答。");
+      return;
+    }
     setIsReviewing(true);
     setModelError("");
     try {
@@ -574,7 +730,6 @@ export default function Home() {
       });
       const result = (await response.json()) as {
         engine?: "model";
-        model?: string;
         score?: number;
         dimensions?: { structure?: number; evidence?: number; depth?: number };
         strengths?: string[];
@@ -582,13 +737,7 @@ export default function Home() {
         annotations?: { quote: string; type: "excellent"; reason: string }[];
         message?: string;
       };
-
-      if (
-        response.ok &&
-        result.engine === "model" &&
-        typeof result.score === "number" &&
-        result.dimensions
-      ) {
+      if (response.ok && result.engine === "model" && typeof result.score === "number" && result.dimensions) {
         const nextReview: ReviewResult = {
           score: result.score,
           structure: result.dimensions.structure ?? 0,
@@ -601,18 +750,14 @@ export default function Home() {
         };
         setReview(nextReview);
         saveAttempt(nextReview);
-        return;
+      } else {
+        setModelError(result.message ?? "模型暂时不可用，本轮使用本地结构化评估。");
+        const nextReview = buildLocalReview();
+        setReview(nextReview);
+        saveAttempt(nextReview);
       }
-
-      setModelError(
-        result.message ??
-          "DeepSeek 暂时无法完成评分，本轮已自动切换为本地结构化评估。",
-      );
-      const nextReview = buildLocalReview();
-      setReview(nextReview);
-      saveAttempt(nextReview);
     } catch {
-      setModelError("网络暂时不可用，本轮已自动切换为本地结构化评估。");
+      setModelError("网络暂时不可用，本轮使用本地结构化评估。");
       const nextReview = buildLocalReview();
       setReview(nextReview);
       saveAttempt(nextReview);
@@ -621,59 +766,161 @@ export default function Home() {
     }
   }
 
-  function nextQuestion() {
-    const current = filteredQuestions.findIndex(
-      (question) => question.id === selectedQuestion.id,
-    );
-    chooseQuestion(
-      filteredQuestions[(current + 1) % filteredQuestions.length] ?? questions[0],
-    );
+  function deleteAttempt(id: string) {
+    const next = answerHistory.filter((item) => item.id !== id);
+    setAnswerHistory(next);
+    saveLocal("frontend-ai-interview-history-v2", next);
   }
 
-  function retryQuestion() {
-    setAnswer("");
-    setReview(null);
-    setModelError("");
-    setVoiceInterim("");
-    setIsListening(false);
-    setIsReviewing(false);
-    setSeconds(0);
-  }
-
-  function togglePractice(id: string) {
-    const next = completedPractice.includes(id)
-      ? completedPractice.filter((item) => item !== id)
-      : [...completedPractice, id];
-    setCompletedPractice(next);
-    window.localStorage.setItem("frontend-ai-practice-v2", JSON.stringify(next));
-  }
-
-  function rateFlashcard(known: boolean) {
-    const current = currentFlashcard;
-    if (known && !knownCards.includes(current.id)) {
-      setKnownCards((items) => {
-        const next = [...items, current.id];
-        window.localStorage.setItem("frontend-ai-known-cards-v1", JSON.stringify(next));
-        return next;
-      });
-    }
-    if (!known) {
-      setKnownCards((items) => {
-        const next = items.filter((id) => id !== current.id);
-        window.localStorage.setItem("frontend-ai-known-cards-v1", JSON.stringify(next));
-        return next;
-      });
-    }
+  function rateFlashcard(rating: FlashcardRating) {
+    const current = flashcardSchedule[currentFlashcard.id] ?? {
+      level: 0,
+      due: today(),
+      streak: 0,
+      lastRating: "again" as FlashcardRating,
+    };
+    const day = new Date();
+    const interval =
+      rating === "again"
+        ? 0
+        : rating === "hard"
+          ? 1
+          : rating === "good"
+            ? Math.max(3, 3 * 2 ** current.level)
+            : Math.max(7, 7 * 2 ** current.level);
+    day.setDate(day.getDate() + interval);
+    const nextItem: FlashcardSchedule = {
+      level:
+        rating === "again"
+          ? 0
+          : Math.min(5, current.level + (rating === "easy" ? 2 : 1)),
+      due: day.toISOString().slice(0, 10),
+      streak: rating === "again" ? 0 : current.streak + 1,
+      lastRating: rating,
+    };
+    const next = { ...flashcardSchedule, [currentFlashcard.id]: nextItem };
+    setFlashcardSchedule(next);
+    saveLocal("frontend-ai-flashcard-schedule-v4", next);
     setFlashcardFlipped(false);
-    setFlashcardIndex((index) => (index + 1) % filteredFlashcards.length);
+    setFlashcardIndex((index) => (index + 1) % Math.max(1, filteredFlashcards.length));
   }
+
+  useEffect(() => {
+    setFlashcardIndex(0);
+    setFlashcardFlipped(false);
+  }, [flashcardDifficulty, flashcardModule]);
+
+  useEffect(() => {
+    if (activeTab !== "practice" || practiceMode !== "flashcards") return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.matches("input, textarea, select, button") || target?.isContentEditable) return;
+      if (event.key === "ArrowLeft") {
+        setFlashcardFlipped(false);
+        setFlashcardIndex(
+          (index) =>
+            (index - 1 + Math.max(1, filteredFlashcards.length)) %
+            Math.max(1, filteredFlashcards.length),
+        );
+      }
+      if (event.key === "ArrowRight") {
+        setFlashcardFlipped(false);
+        setFlashcardIndex(
+          (index) => (index + 1) % Math.max(1, filteredFlashcards.length),
+        );
+      }
+      if (event.code === "Space") {
+        event.preventDefault();
+        setFlashcardFlipped((value) => !value);
+      }
+      if (flashcardFlipped && ["1", "2", "3", "4"].includes(event.key)) {
+        const ratings: FlashcardRating[] = ["again", "hard", "good", "easy"];
+        rateFlashcard(ratings[Number(event.key) - 1]);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeTab, filteredFlashcards.length, flashcardFlipped, practiceMode]);
+
+  function buildLocalDrillReview(): DrillReview {
+    const criteriaHits = selectedDrill.criteria.filter((criterion) =>
+      drillSubmission.includes(criterion.slice(0, 4)),
+    ).length;
+    const lengthScore = Math.min(50, Math.round(drillSubmission.length / 12));
+    const score = Math.min(88, 35 + lengthScore + criteriaHits * 8);
+    return {
+      score,
+      strengths: drillSubmission.length >= 180 ? ["提交内容具备基本完整度，已经形成可复盘的真实输出。"] : [],
+      improvements: selectedDrill.criteria.map((criterion) => `补充证据：${criterion}`),
+      nextAction: `用 15 分钟按“${selectedDrill.criteria[0]}”补一版，再次提交对比。`,
+      engine: "local",
+    };
+  }
+
+  async function submitDrill() {
+    if (drillSubmission.trim().length < 80) {
+      setDrillReview({
+        score: 0,
+        strengths: [],
+        improvements: ["提交至少 80 字，并包含你的具体方案、证据或产物链接。"],
+        nextAction: "先按验收标准逐条补全，再提交评审。",
+        engine: "local",
+      });
+      return;
+    }
+    setIsDrillReviewing(true);
+    try {
+      const response = await fetch("/api/drill-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          task: selectedDrill.task,
+          deliverable: selectedDrill.deliverable,
+          criteria: selectedDrill.criteria,
+          submission: drillSubmission,
+        }),
+      });
+      const result = (await response.json()) as DrillReview;
+      const nextReview =
+        response.ok && typeof result.score === "number" ? { ...result, engine: "model" as const } : buildLocalDrillReview();
+      setDrillReview(nextReview);
+      const attempt: DrillAttempt = {
+        id: `${selectedDrill.id}-${Date.now()}`,
+        practiceId: selectedDrill.id,
+        submission: drillSubmission.trim(),
+        createdAt: new Date().toISOString(),
+        review: nextReview,
+      };
+      const next = [...drillAttempts, attempt].slice(-100);
+      setDrillAttempts(next);
+      saveLocal("frontend-ai-drill-history-v4", next);
+    } catch {
+      const nextReview = buildLocalDrillReview();
+      setDrillReview(nextReview);
+      const attempt: DrillAttempt = {
+        id: `${selectedDrill.id}-${Date.now()}`,
+        practiceId: selectedDrill.id,
+        submission: drillSubmission.trim(),
+        createdAt: new Date().toISOString(),
+        review: nextReview,
+      };
+      const next = [...drillAttempts, attempt].slice(-100);
+      setDrillAttempts(next);
+      saveLocal("frontend-ai-drill-history-v4", next);
+    } finally {
+      setIsDrillReviewing(false);
+    }
+  }
+
+  const selectedQuestionSources = selectedQuestion.sourceIds
+    .map((id) => interviewEvidence.find((source) => source.id === id))
+    .filter(Boolean);
 
   return (
     <div className="app">
       <header className="global-nav">
-        <button className="wordmark" onClick={() => switchTab("home")} aria-label="前端向 AI 首页">
-          <span className="wordmark-icon">F</span>
-          <span>Frontend to AI</span>
+        <button className="wordmark" onClick={() => switchTab("home")} aria-label="打开工作台">
+          <span>F→AI</span>
         </button>
         <nav className="tab-bar" role="tablist" aria-label="网站模块">
           {tabs.map((tab) => (
@@ -688,1097 +935,858 @@ export default function Home() {
             </button>
           ))}
         </nav>
-        <button className="nav-action" onClick={() => switchTab("interview")}>
-          开始训练
-        </button>
+        <div className="global-search">
+          <span>⌕</span>
+          <input
+            value={globalSearch}
+            onChange={(event) => setGlobalSearch(event.target.value)}
+            placeholder="搜索知识、岗位、题目"
+            aria-label="全站搜索"
+          />
+          {globalResults.length > 0 && (
+            <div className="search-results">
+              {globalResults.map((result) => (
+                <button key={`${result.type}-${result.id}`} onClick={() => openSearchResult(result)}>
+                  <small>{result.type}</small>
+                  <span>{result.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </header>
 
-      <main className="module-stage" key={activeTab}>
+      <main className="module-stage">
         {activeTab === "home" && (
-          <section className="home-module module">
-            <div className="hero-copy">
-              <p className="overline">A PRACTICAL GUIDE FOR EVERY FRONTEND DEVELOPER</p>
-              <h1>
-                让前端，
-                <br />
-                向<span>智能</span>生长。
-              </h1>
-              <p className="hero-description">
-                AI 的接口持续变化，但优秀前端工程师最擅长的事从未改变：
-                理解用户、组织复杂性、打磨体验并可靠交付。这里提供一条不绑定模型与厂商的转型路径。
-              </p>
-              <div className="hero-buttons">
-                <button className="primary-button" onClick={() => switchTab("roadmap")}>
-                  查看学习路线
-                </button>
-                <button className="text-button" onClick={() => switchTab("roles")}>
-                  探索岗位方向 <span>›</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="hero-product" aria-hidden="true">
-              <div className="ambient-orb orb-one" />
-              <div className="ambient-orb orb-two" />
-              <div className="product-frame">
-                <div className="product-bar">
-                  <span><i /><i /><i /></span>
-                  <b>AI Workbench</b>
-                  <em>● LIVE</em>
-                </div>
-                <div className="product-body">
-                  <aside>
-                    <span className="mini-logo">F</span>
-                    <i className="selected" />
-                    <i />
-                    <i />
-                    <i />
-                  </aside>
-                  <div className="product-canvas">
-                    <div className="canvas-greeting">今天想构建什么？</div>
-                    <div className="prompt-card">
-                      <span>为这个产品设计一个可解释、可撤销的 AI 工作流</span>
-                      <b>↑</b>
-                    </div>
-                    <div className="tool-row">
-                      <span>◉ 设计规范</span><span>⌁ 产品数据</span><span>＋ 添加工具</span>
-                    </div>
-                  </div>
-                  <div className="insight-panel">
-                    <small>QUALITY SIGNAL</small>
-                    <strong>92</strong>
-                    <span>答案引用完整度</span>
-                    <div><i style={{ width: "92%" }} /></div>
-                    <p>3 个来源 · 1 项待确认</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="experience-card">
+          <section className="module shell">
+            <div className="module-toolbar">
               <div>
-                <small>先选择你的阶段</small>
-                <h2>每个前端，都有自己的最短路径。</h2>
+                <h1>转型工作台</h1>
+                <p>只展示当前状态、下一步和需要处理的事项。</p>
               </div>
-              <div className="experience-options">
-                {experienceLevels.map((item) => (
-                  <button
-                    key={item.id}
-                    className={experience === item.id ? "active" : ""}
-                    onClick={() => chooseExperience(item.id)}
-                  >
-                    <strong>{item.label}</strong>
-                    <span>{item.caption}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="bento-grid">
-              <article className="bento-card bento-dark">
-                <small>长期复利</small>
-                <h3>模型会换。<br />能力不会。</h3>
-                <div className="orbit">
-                  <span>评测</span><span>体验</span><span>可靠性</span><span>数据</span>
-                  <i>AI</i>
-                </div>
-              </article>
-              <article className="bento-card">
-                <small>学习地图</small>
-                <strong className="bento-number">14</strong>
-                <p>知识模块 · 每块 6 条中英文优质资源</p>
-                <button onClick={() => switchTab("roadmap")}>打开路线图 ›</button>
-              </article>
-              <article className="bento-card bento-blue">
-                <small>北京岗位样本</small>
-                <strong className="bento-number">100</strong>
-                <p>10 类岗位 · 中大厂招聘入口可溯源</p>
-                <button onClick={() => switchTab("roles")}>查看岗位 ›</button>
-              </article>
-              <article className="bento-card bento-wide">
-                <div>
-                  <small>真实面经训练</small>
-                  <h3>高频问题，不只给答案。<br />还要练证据与取舍。</h3>
-                </div>
-                <div className="score-preview">
-                  <span><b>结构</b><i><em style={{ width: "86%" }} /></i></span>
-                  <span><b>证据</b><i><em style={{ width: "72%" }} /></i></span>
-                  <span><b>深度</b><i><em style={{ width: "91%" }} /></i></span>
-                </div>
-                <button onClick={() => switchTab("interview")}>进入模拟面试 ›</button>
-              </article>
-            </div>
-          </section>
-        )}
-
-        {activeTab === "roadmap" && (
-          <section className="roadmap-module module">
-            <div className="module-hero centered">
-              <p className="overline">KNOWLEDGE ROADMAP</p>
-              <h1>学会不容易过时的东西。</h1>
-              <p>
-                当前选择：{level.label}前端。学习日已按这一阶段调整；建议每周投入 12—20 小时，并用一个贯穿项目验证所有知识。
-              </p>
-              <div className="inline-levels">
-                {experienceLevels.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => chooseExperience(item.id)}
-                    className={experience === item.id ? "active" : ""}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="roadmap-toolbar">
-              <div className="filter-tabs">
-                {["全部", "底层", "前端", "应用", "设计", "工程", "质量", "进阶"].map(
-                  (item) => (
-                    <button
-                      key={item}
-                      className={roadmapCategory === item ? "active" : ""}
-                      onClick={() => setRoadmapCategory(item)}
-                    >
-                      {item}
-                    </button>
-                  ),
-                )}
-              </div>
-              <span className="toolbar-hint">点击表头即可排序，再点一次切换升降序</span>
-            </div>
-
-            <div className="roadmap-list">
-              <div className="roadmap-table-head" role="row">
-                <span>#</span>
-                <span>知识模块</span>
-                {[
-                  ["importance", "重要程度"],
-                  ["difficulty", "学习难度"],
-                  ["days", "预计时长"],
-                ].map(([key, label]) => (
-                  <button
-                    key={key}
-                    onClick={() => toggleRoadmapSort(key as RoadmapSortKey)}
-                    className={roadmapSort === key ? "active" : ""}
-                  >
-                    {label}
-                    <i>
-                      {roadmapSort === key
-                        ? roadmapSortDirection === "desc"
-                          ? "↓"
-                          : "↑"
-                        : "↕"}
-                    </i>
-                  </button>
-                ))}
-                <span aria-hidden="true" />
-              </div>
-              {sortedKnowledge.map((item, index) => {
-                const expanded = expandedKnowledge === item.id;
-                const sortedResources = [...item.resources].sort(
-                  (a, b) => b[resourceSort] - a[resourceSort],
-                );
-                return (
-                  <article className={expanded ? "expanded" : ""} key={item.id}>
-                    <button
-                      className="roadmap-summary"
-                      onClick={() => setExpandedKnowledge(expanded ? "" : item.id)}
-                      aria-expanded={expanded}
-                    >
-                      <span className="roadmap-index">{String(index + 1).padStart(2, "0")}</span>
-                      <span className="roadmap-name">
-                        <small>{item.category}{item.optional ? " · 选修" : ""}</small>
-                        <strong>{item.name}</strong>
-                        <em>{item.why}</em>
-                      </span>
-                      <span className="roadmap-metric">
-                        <small>重要</small><Rating value={item.importance} label="重要程度" />
-                      </span>
-                      <span className="roadmap-metric">
-                        <small>难度</small><Rating value={item.difficulty} label="学习难度" />
-                      </span>
-                      <span className="roadmap-days">
-                        <strong>{item.adjustedDays}</strong><small>天</small>
-                      </span>
-                      <span className="disclosure">{expanded ? "−" : "+"}</span>
-                    </button>
-                    {expanded && (
-                      <div className="roadmap-detail">
-                        <div className="knowledge-position">
-                          <div className="position-heading">
-                            <div>
-                              <small>KNOWLEDGE POSITIONING</small>
-                              <h3>先拿下 20% 的高价值知识，再决定是否深挖。</h3>
-                            </div>
-                            <p>{item.outcome}</p>
-                          </div>
-                          <div className="level-ladder">
-                            {item.levels.map((knowledgeLevel, levelIndex) => (
-                              <article
-                                className={levelIndex === 0 ? "priority" : ""}
-                                key={knowledgeLevel.title}
-                              >
-                                <div>
-                                  <span>{levelIndex + 1}</span>
-                                  <strong>{knowledgeLevel.title}</strong>
-                                </div>
-                                <small>{knowledgeLevel.effort}</small>
-                                <em>{knowledgeLevel.share}</em>
-                                <ul>
-                                  {knowledgeLevel.items.map((levelItem) => (
-                                    <li key={levelItem}>{levelItem}</li>
-                                  ))}
-                                </ul>
-                              </article>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="resource-section">
-                          <div className="resource-heading">
-                            <div>
-                              <small>6 CURATED RESOURCES</small>
-                              <h3>3 条中文 + 3 条国际资源</h3>
-                              <p className="resource-method">
-                                易懂度综合公开学习者口碑与课程结构；专业度按内容深度、完整性和权威性评审。
-                              </p>
-                            </div>
-                            <div className="resource-sort" aria-label="教程排序">
-                              <span>教程排序</span>
-                              <button
-                                className={resourceSort === "ease" ? "active" : ""}
-                                onClick={() => setResourceSort("ease")}
-                              >
-                                易学易懂
-                              </button>
-                              <button
-                                className={resourceSort === "professional" ? "active" : ""}
-                                onClick={() => setResourceSort("professional")}
-                              >
-                                专业程度
-                              </button>
-                            </div>
-                          </div>
-                          <div className="learning-resources">
-                          {sortedResources.map((resource, resourceIndex) => (
-                            <a
-                              href={resource.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              key={resource.title}
-                            >
-                              <span>{resourceIndex + 1}</span>
-                              <div>
-                                <small>
-                                  {resource.provider} · {resource.lang} · {resource.audience}
-                                </small>
-                                <strong>{resource.title}</strong>
-                                <p>{resource.note}</p>
-                                <em>
-                                  易懂 {resource.ease.toFixed(1)}
-                                  <i style={{ width: `${resource.ease * 10}%` }} />
-                                  专业 {resource.professional.toFixed(1)}
-                                  <i style={{ width: `${resource.professional * 10}%` }} />
-                                </em>
-                              </div>
-                              <b>↗</b>
-                            </a>
-                          ))}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-        )}
-
-        {activeTab === "roles" && (
-          <section className="roles-module module">
-            <div className="module-hero">
-              <p className="overline">ROLE FINDER · BEIJING SNAPSHOT</p>
-              <h1>前端经验，<br />可以迁移到哪里？</h1>
-              <p>
-                10 条路线都从前端已有能力出发。岗位优先级随经验阶段变化；100
-                条北京招聘观察卡来自中大厂公开招聘入口，更新于 2026-07-29。
-              </p>
-            </div>
-
-            <div className="role-carousel">
-              {[...rolePaths]
-                .sort((a, b) => b.fits[experience] - a.fits[experience])
-                .map((role, index) => (
-                  <article className={`role-path ${role.accent}`} key={role.id}>
-                    <div className="role-top">
-                      <span>0{index + 1}</span>
-                      <strong>{role.fits[experience]}% 相关度</strong>
-                    </div>
-                    <small>{role.en}</small>
-                    <h2>{role.name}</h2>
-                    <p>{role.description}</p>
-                    <div className="role-columns">
-                      <div>
-                        <small>你已拥有</small>
-                        {role.bridge.map((item) => <span key={item}>✓ {item}</span>)}
-                      </div>
-                      <div>
-                        <small>下一步补齐</small>
-                        {role.learn.map((item) => <span key={item}>＋ {item}</span>)}
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setQuestionRole(role.id);
-                        switchTab("interview");
-                      }}
-                    >
-                      训练这个岗位 <b>›</b>
-                    </button>
-                  </article>
-                ))}
-            </div>
-
-            <div className="jobs-section">
-              <div className="jobs-heading">
-                <div>
-                  <small>TRACEABLE JOB LIBRARY</small>
-                  <h2>100 条招聘观察卡</h2>
-                </div>
-                <div className="job-controls">
-                  <input
-                    value={jobSearch}
-                    onChange={(event) => {
-                      setJobSearch(event.target.value);
-                      setJobVisibleCount(12);
-                    }}
-                    placeholder="搜索公司、岗位或技术关键词"
-                    aria-label="搜索岗位"
-                  />
-                  <select
-                    value={roleFilter}
-                    onChange={(event) => {
-                      setRoleFilter(event.target.value);
-                      setJobVisibleCount(12);
-                    }}
-                  >
-                    <option>全部</option>
-                    {rolePaths.map((role) => (
-                      <option key={role.id}>{role.id}</option>
+              <div className="toolbar-actions">
+                <label>
+                  前端经验
+                  <select value={experience} onChange={(event) => chooseExperience(event.target.value as ExperienceId)}>
+                    {experienceLevels.map((item) => (
+                      <option value={item.id} key={item.id}>{item.label}</option>
                     ))}
                   </select>
-                </div>
+                </label>
+                <label>
+                  目标岗位
+                  <select value={targetRole} onChange={(event) => chooseTargetRole(event.target.value)}>
+                    {rolePaths.map((role) => (
+                      <option value={role.id} key={role.id}>{role.name}</option>
+                    ))}
+                  </select>
+                </label>
               </div>
-              <div className="job-stats">
-                <span><strong>10</strong> 种岗位类型</span>
-                <span><strong>{jobs.length}</strong> 条观察卡</span>
-                <span><strong>{new Set(jobs.map((job) => job.company)).size}</strong> 家中大厂</span>
-                <span><strong>{filteredJobs.length}</strong> 条当前结果</span>
-              </div>
-              <div className="job-list">
-                {filteredJobs.slice(0, jobVisibleCount).map((job) => (
-                  <a href={job.source} target="_blank" rel="noreferrer" key={job.id}>
-                    <span className="company-monogram">{job.company.slice(0, 1)}</span>
-                    <div className="job-title">
-                      <small>{job.company} · 北京 · {job.team}</small>
-                      <strong>{job.title}</strong>
-                      <p>{job.keywords.join(" · ")}</p>
-                    </div>
-                    <div className="job-pay">
-                      <strong>{job.salary}</strong>
-                      <span>{job.months} · {job.experience}</span>
-                    </div>
-                    <span className="job-arrow">↗</span>
-                  </a>
-                ))}
-              </div>
-              {jobVisibleCount < filteredJobs.length && (
-                <button
-                  className="show-more"
-                  onClick={() => setJobVisibleCount((count) => count + 12)}
-                >
-                  再加载 12 条 · 剩余 {filteredJobs.length - jobVisibleCount} 条
-                </button>
-              )}
-              <p className="data-note">
-                每种岗位覆盖至少 10 家中大厂。链接指向公司官方招聘入口，职位会动态上下线；薪资为北京市场公开样本区间，仅用于比较方向，不代表具体 Offer。
-              </p>
             </div>
-          </section>
-        )}
 
-        {activeTab === "interview" && (
-          <section className="interview-module module">
-            <div className="interview-intro">
-              <p className="overline">INTERVIEW STUDIO</p>
-              <h1>把“我会”，<br />变成可信的证据。</h1>
-              <p>
-                题库由 {interviewSources.length} 组公开面经样本聚合。首选语音模拟真实面试，也可切换文本；参考答案在选题时即刻可用。
-              </p>
-              <label>
-                目标岗位
-                <select
-                  value={questionRole}
-                  onChange={(event) => {
-                    const nextRole = event.target.value;
-                    setQuestionRole(nextRole);
-                    const next =
-                      questions.find(
-                        (question) =>
-                          nextRole === "全部" || question.role.includes(nextRole),
-                      ) ?? questions[0];
-                    chooseQuestion(next);
+            <div className="dashboard-grid">
+              <article className="dashboard-primary">
+                <div className="card-heading">
+                  <div>
+                    <small>下一步</small>
+                    <h2>{nextKnowledge.name}</h2>
+                  </div>
+                  <span>{Math.max(3, Math.round(nextKnowledge.days * level.multiplier))} 天</span>
+                </div>
+                <p>{nextKnowledge.outcome}</p>
+                <div className="task-checklist">
+                  {nextKnowledge.levels[0].items.slice(0, 3).map((item) => (
+                    <span key={item}>□ {item}</span>
+                  ))}
+                </div>
+                <button
+                  className="primary-action"
+                  onClick={() => {
+                    setSelectedKnowledgeId(nextKnowledge.id);
+                    switchTab("roadmap");
                   }}
                 >
-                  <option>全部</option>
-                  {rolePaths.map((role) => (
-                    <option key={role.id}>{role.id}</option>
-                  ))}
-                </select>
-              </label>
+                  打开知识大块
+                </button>
+              </article>
+
+              <article className="metric-card">
+                <small>路线进度</small>
+                <strong>{completedKnowledge}<em> / {knowledge.length}</em></strong>
+                <p>{learningPlan.length} 个知识大块在计划中</p>
+                <button onClick={() => switchTab("roadmap")}>管理计划</button>
+              </article>
+              <article className="metric-card">
+                <small>今日闪卡</small>
+                <strong>{dueFlashcards.length}</strong>
+                <p>{masteredCards} 张达到稳定掌握</p>
+                <button onClick={() => { setPracticeMode("flashcards"); switchTab("practice"); }}>开始复习</button>
+              </article>
+              <article className="metric-card">
+                <small>面试表现</small>
+                <strong>{averages.score || "—"}</strong>
+                <p>{validAttempts.length ? `最弱维度：${weakestDimension[1]} ${weakestDimension[2]} 分` : "尚无有效回答"}</p>
+                <button onClick={() => switchTab("interview")}>继续训练</button>
+              </article>
+              <article className="metric-card">
+                <small>岗位跟进</small>
+                <strong>{savedJobs}</strong>
+                <p>{Object.values(applications).filter((item) => item === "面试中").length} 个进入面试</p>
+                <button onClick={() => switchTab("roles")}>查看清单</button>
+              </article>
             </div>
 
-            <div className="interview-workspace">
-              <aside className="question-rail">
-                <div className="rail-title">
-                  <strong>{filteredQuestions.length} 个高频主题</strong>
-                  <span>按样本热度</span>
+            <div className="dashboard-lower">
+              <section className="panel">
+                <div className="card-heading">
+                  <div><small>目标岗位</small><h2>{currentRole.name}</h2></div>
+                  <b>{currentRole.fits[experience]}% 迁移匹配</b>
                 </div>
-                <div className="rail-scroll">
-                  {filteredQuestions.map((question, index) => (
-                    <button
-                      key={question.id}
-                      className={selectedQuestion.id === question.id ? "active" : ""}
-                      onClick={() => chooseQuestion(question)}
-                    >
-                      <span>Q{String(index + 1).padStart(2, "0")}</span>
-                      <div>
-                        <small>
-                          {question.category} · {question.frequency}/{interviewSources.length} 组命中
-                        </small>
-                        <strong>{question.question}</strong>
-                      </div>
-                    </button>
-                  ))}
+                <p>{currentRole.description}</p>
+                <div className="chip-row">
+                  {currentRole.learn.map((item) => <span key={item}>{item}</span>)}
                 </div>
-              </aside>
-
-              <section className="answer-studio">
-                <div className="studio-top">
-                  <span>本轮 · {selectedQuestion.category}</span>
-                  <time>{formatTime(seconds)}</time>
+                <button onClick={() => { setRoleFilter(currentRole.id); switchTab("roles"); }}>查看岗位证据</button>
+              </section>
+              <section className="panel">
+                <div className="card-heading">
+                  <div><small>最近得分</small><h2>回答趋势</h2></div>
+                  <b>{validAttempts.length} 次有效回答</b>
                 </div>
-                <h2>{selectedQuestion.question}</h2>
-                <div className="question-purpose">
-                  <div className="purpose-icon">◎</div>
-                  <div>
-                    <small>面试官为什么问 · QUESTION INTENT</small>
-                    <strong>{selectedQuestion.purpose.tests}</strong>
-                    <p>{selectedQuestion.purpose.expects}</p>
-                  </div>
-                </div>
-                <div className="answer-steps">
-                  {selectedQuestion.answerFrame.map((step, index) => (
-                    <span key={step}><b>{index + 1}</b>{step}</span>
-                  ))}
-                </div>
-
-                <div className="input-mode-switch" role="tablist" aria-label="回答方式">
-                  <button
-                    className={inputMode === "voice" ? "active" : ""}
-                    onClick={() => setInputMode("voice")}
-                  >
-                    <span>●</span> 语音回答 <em>首选</em>
-                  </button>
-                  <button
-                    className={inputMode === "text" ? "active" : ""}
-                    onClick={() => setInputMode("text")}
-                  >
-                    文本回答
-                  </button>
-                </div>
-
-                {inputMode === "voice" && !review && (
-                  <div className={`voice-recorder ${isListening ? "listening" : ""}`}>
-                    <button onClick={startVoiceInput} disabled={isListening}>
-                      <span className="voice-rings"><i /><i /><b>⌁</b></span>
-                      <strong>{isListening ? "正在聆听" : "开始语音回答"}</strong>
-                      <small>{isListening ? "最长 3 分钟 · 自动转写" : "点击后请允许麦克风权限"}</small>
-                    </button>
-                    <p>{voiceMessage}</p>
-                    {isListening && (
-                      <div className="live-transcript" aria-live="polite">
-                        <span>LIVE</span>
-                        <p>
-                          {voiceInterim ||
-                            answer.slice(-120) ||
-                            "正在等待语音，请开始回答…"}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <label className={`answer-field ${inputMode === "voice" ? "transcript" : ""}`}>
-                  <span>{inputMode === "voice" ? "语音转写 · 可手动修正" : "输入完整回答"}</span>
-                  <textarea
-                    value={answer}
-                    disabled={Boolean(review) || isReviewing}
-                    onChange={(event) => setAnswer(event.target.value)}
-                    placeholder="建议 300—600 字。先给结论，再讲场景、架构、关键取舍、量化结果和复盘……"
-                  />
-                  <small>
-                    {answer.length} 字 · 模型评分会将本题答案发送给 DeepSeek
-                  </small>
-                </label>
-                {!review ? (
-                  <>
-                    <button
-                      className="review-button"
-                      disabled={answer.trim().length < 80 || isReviewing}
-                      onClick={submitAnswer}
-                    >
-                      {isReviewing ? "DeepSeek 正在评估…" : "生成结构化复盘"}
-                    </button>
-                    <p className="model-status">
-                      <span>AI</span>
-                      DeepSeek V4 Flash 已接入；未配置密钥或请求失败时自动使用本地评估。
-                    </p>
-                  </>
-                ) : (
-                  <div className="review-result">
-                    <div className="review-engine">
-                      <span>
-                        {review.engine === "model"
-                          ? "DeepSeek V4 Flash · 模型评分"
-                          : "本地结构化评估"}
-                      </span>
-                      {review.engine === "local" && <em>未使用模型结果</em>}
-                    </div>
-                    {modelError && <p className="model-error">{modelError}</p>}
-                    <div className="review-score-row">
-                      <div className="total-score">
-                        <strong>{review.score}</strong><span>本轮得分<br />/ 100</span>
-                      </div>
-                      <div className="dimension-scores">
-                        {[
-                          ["结构", review.structure],
-                          ["证据", review.evidence],
-                          ["深度", review.depth],
-                        ].map(([label, value]) => (
-                          <div key={label as string}>
-                            <span>{label}</span><i><b style={{ width: `${value}%` }} /></i><em>{value}</em>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="answer-annotation">
-                      <small>答案标记 · 绿色为表现较好的证据和关键概念</small>
-                      <p>
-                        {answer.split(/([。！？；\n])/).map((sentence, index) => {
-                          const modelAnnotation = review.annotations.find(
-                            (annotation) =>
-                              sentence.includes(annotation.quote) ||
-                              annotation.quote.includes(sentence.trim()),
-                          );
-                          const strong = review.engine === "model"
-                            ? Boolean(modelAnnotation)
-                            : selectedQuestion.keywords.some((keyword) =>
-                                sentence.toLowerCase().includes(keyword.toLowerCase()),
-                              ) || /\d|%|用户|指标|结果|成本/.test(sentence);
-                          return strong ? (
-                            <mark
-                              key={`${sentence}-${index}`}
-                              title={modelAnnotation?.reason}
-                            >
-                              {sentence}
-                            </mark>
-                          ) : (
-                            <span key={`${sentence}-${index}`}>{sentence}</span>
-                          );
-                        })}
-                      </p>
-                    </div>
-
-                    <div className="review-columns">
-                      <section className="review-strengths">
-                        <small>优秀点</small>
-                        {review.strengths.length ? (
-                          review.strengths.map((strength) => (
-                            <p key={strength}>✓ {strength}</p>
-                          ))
-                        ) : (
-                          <p className="review-empty">
-                            本次回答中暂未识别到有效亮点。
-                          </p>
-                        )}
-                      </section>
-                      <section className="review-improvements">
-                        <small>不足与改进示例</small>
-                        {review.improvements.map((improvement) => (
-                          <article key={improvement.point}>
-                            <strong>{improvement.point}</strong>
-                            <p>{improvement.example}</p>
-                          </article>
-                        ))}
-                      </section>
-                    </div>
-                    <div className="review-actions">
-                      <button className="retry-answer" onClick={retryQuestion}>
-                        重新回答本题
-                      </button>
-                      <button onClick={nextQuestion}>下一题</button>
-                    </div>
-                  </div>
-                )}
-
-                <details className="reference-answer">
-                  <summary>
-                    <span>参考答案 · 两种阅读方式</span>
-                    <em>结构提纲与完整口述可切换</em>
-                  </summary>
-                  <div className="reference-content">
-                    <div className="reference-mode-switch" role="tablist">
-                      <button
-                        className={referenceMode === "structured" ? "active" : ""}
-                        onClick={() => setReferenceMode("structured")}
-                      >
-                        结构化提纲
-                      </button>
-                      <button
-                        className={referenceMode === "full" ? "active" : ""}
-                        onClick={() => setReferenceMode("full")}
-                      >
-                        完整优质回答
-                      </button>
-                    </div>
-                    {referenceMode === "structured" ? (
-                      <>
-                        <section className="reference-thesis">
-                          <small>一句话主张</small>
-                          <strong>{selectedQuestion.reference.thesis}</strong>
-                        </section>
-                        <div className="reference-grid">
-                          {selectedQuestion.reference.sections.map((section, index) => (
-                            <article key={section.label}>
-                              <span>{String(index + 1).padStart(2, "0")}</span>
-                              <strong>{section.label}</strong>
-                              <p>{section.content}</p>
-                            </article>
-                          ))}
-                        </div>
-                        <div className="reference-evidence">
-                          <section>
-                            <small>必须给出的证据</small>
-                            {selectedQuestion.reference.evidence.map((item) => (
-                              <p key={item}>＋ {item}</p>
-                            ))}
-                          </section>
-                          <section>
-                            <small>常见失分点</small>
-                            {selectedQuestion.reference.pitfalls.map((item) => (
-                              <p key={item}>× {item}</p>
-                            ))}
-                          </section>
-                        </div>
-                        <blockquote>{selectedQuestion.reference.example}</blockquote>
-                      </>
-                    ) : (
-                      <section className="full-reference-answer">
-                        <small>可直接练习口述 · 建议理解结构后换成自己的项目证据</small>
-                        <p>{selectedQuestion.reference.fullAnswer}</p>
-                      </section>
-                    )}
-                  </div>
-                </details>
-                {questionAttempts.length > 0 && (
-                  <section className="answer-history">
-                    <div className="history-heading">
-                      <div>
-                        <small>ANSWER HISTORY · 当前设备保存</small>
-                        <h3>这道题的进步曲线</h3>
-                      </div>
-                      <strong>{questionAttempts.length} 次回答</strong>
-                    </div>
-                    <ScoreTrend attempts={questionAttempts.slice(-8)} />
-                    <div className="history-snapshots">
-                      {[...questionAttempts].reverse().map((attempt, index) => (
-                        <details key={attempt.id}>
-                          <summary>
-                            <span>第 {questionAttempts.length - index} 次</span>
-                            <strong>{attempt.review.score} 分</strong>
-                            <time>
-                              {new Date(attempt.createdAt).toLocaleString("zh-CN", {
-                                month: "2-digit",
-                                day: "2-digit",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </time>
-                            <em>{formatTime(attempt.duration)}</em>
-                          </summary>
-                          <div>
-                            <small>回答快照</small>
-                            <p>{attempt.answer}</p>
-                            <section>
-                              <span>结构 {attempt.review.structure}</span>
-                              <span>证据 {attempt.review.evidence}</span>
-                              <span>深度 {attempt.review.depth}</span>
-                            </section>
-                            <small>当次建议</small>
-                            {attempt.review.improvements.map((item) => (
-                              <p key={item.point}>
-                                <strong>{item.point}</strong> {item.example}
-                              </p>
-                            ))}
-                          </div>
-                        </details>
-                      ))}
-                    </div>
-                  </section>
-                )}
-                <details className="source-drawer">
-                  <summary>
-                    查看这道题的 {selectedQuestion.sourceIds.length} 组面经来源
-                  </summary>
-                  <div>
-                    {selectedQuestion.sourceIds.map((sourceId) => {
-                      const source = interviewSources.find((item) => item.id === sourceId);
-                      return source ? (
-                        <a href={source.url} target="_blank" rel="noreferrer" key={sourceId}>
-                          {source.label} ↗
-                        </a>
-                      ) : null;
-                    })}
-                  </div>
-                </details>
+                <ScoreTrend attempts={validAttempts.slice(-6)} />
               </section>
             </div>
           </section>
         )}
 
-        {activeTab === "practice" && (
-          <section className="practice-module module">
-            <div className="module-hero centered">
-              <p className="overline">DELIBERATE PRACTICE</p>
-              <h1>每天进步一点，<br />最终形成新的职业身份。</h1>
-              <p>
-                用主动回忆代替“看懂了”的错觉：84
-                张分级闪卡练概念，路线图谱理解依赖，专项任务产出可展示的作品证据。
-              </p>
-              <div className="completion-ring">
-                <strong>{knownCards.length}</strong>
-                <span>/ {flashcards.length}<br />闪卡掌握</span>
+        {activeTab === "roadmap" && (
+          <section className="module shell">
+            <div className="module-toolbar">
+              <div>
+                <h1>学习路线</h1>
+                <p>表头排序；点开知识大块查看 20/80 内容、资源和个人进度。</p>
+              </div>
+              <div className="toolbar-actions">
+                <label>
+                  分类
+                  <select value={roadmapCategory} onChange={(event) => setRoadmapCategory(event.target.value)}>
+                    <option>全部</option>
+                    {[...new Set(knowledge.map((item) => item.category))].map((item) => <option key={item}>{item}</option>)}
+                  </select>
+                </label>
+                <span className="toolbar-stat">{learningPlan.length} 项计划中 · {completedKnowledge} 项已入门</span>
               </div>
             </div>
 
-            <div className="practice-mode-tabs" role="tablist" aria-label="刻意练习模式">
-              {[
-                ["flashcards", "闪卡练习", "主动回忆"],
-                ["graph", "知识图谱", "定位与路径"],
-                ["drills", "专项任务", "真实输出"],
-              ].map(([id, label, caption]) => (
-                <button
-                  key={id}
-                  className={practiceMode === id ? "active" : ""}
-                  onClick={() => setPracticeMode(id as typeof practiceMode)}
-                >
-                  <strong>{label}</strong><span>{caption}</span>
-                </button>
-              ))}
+            <div className="roadmap-layout">
+              <div className="roadmap-table-wrap">
+                <table className="roadmap-table">
+                  <thead className="roadmap-table-head">
+                    <tr>
+                      <th>知识大块</th>
+                      <th>阶段</th>
+                      <th>
+                        <button onClick={() => toggleRoadmapSort("importance")}>
+                          重要度 {roadmapSort === "importance" ? (roadmapSortDirection === "desc" ? "↓" : "↑") : "↕"}
+                        </button>
+                      </th>
+                      <th>
+                        <button onClick={() => toggleRoadmapSort("difficulty")}>
+                          难度 {roadmapSort === "difficulty" ? (roadmapSortDirection === "desc" ? "↓" : "↑") : "↕"}
+                        </button>
+                      </th>
+                      <th>
+                        <button onClick={() => toggleRoadmapSort("days")}>
+                          学习天数 {roadmapSort === "days" ? (roadmapSortDirection === "desc" ? "↓" : "↑") : "↕"}
+                        </button>
+                      </th>
+                      <th>我的进度</th>
+                      <th>计划</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedKnowledge.map((item) => (
+                      <tr
+                        key={item.id}
+                        className={selectedKnowledgeId === item.id ? "selected" : ""}
+                        onClick={() => setSelectedKnowledgeId(item.id)}
+                      >
+                        <td>
+                          <strong>{item.name}</strong>
+                          <small>{item.category} · {item.outcome}</small>
+                        </td>
+                        <td>{item.phase}</td>
+                        <td><span className="score-dots">{item.importance}/5</span></td>
+                        <td><span className="score-dots">{item.difficulty}/5</span></td>
+                        <td>{item.adjustedDays} 天</td>
+                        <td>
+                          <span className={`progress-tag progress-${knowledgeProgress[item.id] ?? 0}`}>
+                            {["未开始", "入门", "进阶", "精通"][knowledgeProgress[item.id] ?? 0]}
+                          </span>
+                        </td>
+                        <td>
+                          <button
+                            className={learningPlan.includes(item.id) ? "bookmark active" : "bookmark"}
+                            onClick={(event) => { event.stopPropagation(); toggleLearningPlan(item.id); }}
+                            aria-label={learningPlan.includes(item.id) ? "移出计划" : "加入计划"}
+                          >
+                            {learningPlan.includes(item.id) ? "★" : "☆"}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {selectedKnowledge && (
+                <aside className="knowledge-drawer">
+                  <button className="drawer-close" onClick={() => setSelectedKnowledgeId(null)} aria-label="关闭">×</button>
+                  <small>{selectedKnowledge.category} · {selectedKnowledge.phase}</small>
+                  <h2>{selectedKnowledge.name}</h2>
+                  <p>{selectedKnowledge.why}</p>
+                  <section className="drawer-progress">
+                    <span>我的位置</span>
+                    <div>
+                      {["未开始", "入门", "进阶", "精通"].map((label, index) => (
+                        <button
+                          key={label}
+                          className={(knowledgeProgress[selectedKnowledge.id] ?? 0) === index ? "active" : ""}
+                          onClick={() => updateKnowledgeProgress(selectedKnowledge.id, index)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                  <div className="level-stack">
+                    {selectedKnowledge.levels.map((item, index) => (
+                      <article key={item.title} className={index === 0 ? "focus" : ""}>
+                        <div>
+                          <strong>{item.title}</strong>
+                          <span>{item.effort}</span>
+                        </div>
+                        <small>{item.share}</small>
+                        {item.items.map((point) => <p key={point}>• {point}</p>)}
+                      </article>
+                    ))}
+                  </div>
+                  <div className="resource-heading">
+                    <div>
+                      <h3>学习资源</h3>
+                      <p>3 条中文 + 3 条英文；易学度可由你覆盖编辑初评。</p>
+                    </div>
+                    <Segmented
+                      value={resourceSort}
+                      label="教程排序"
+                      items={[
+                        { value: "ease", label: "易学度" },
+                        { value: "professional", label: "专业度" },
+                      ]}
+                      onChange={setResourceSort}
+                    />
+                  </div>
+                  <div className="resource-list">
+                    {[...selectedKnowledge.resources]
+                      .sort((a, b) => {
+                        const aKey = `${selectedKnowledge.id}-${a.title}`;
+                        const bKey = `${selectedKnowledge.id}-${b.title}`;
+                        const av = resourceSort === "ease" ? (resourceRatings[aKey] ?? a.ease) : a.professional;
+                        const bv = resourceSort === "ease" ? (resourceRatings[bKey] ?? b.ease) : b.professional;
+                        return bv - av;
+                      })
+                      .map((resource) => {
+                        const key = `${selectedKnowledge.id}-${resource.title}`;
+                        return (
+                          <article key={resource.title}>
+                            <div>
+                              <span>{resource.lang}</span>
+                              <small>{resource.provider}</small>
+                            </div>
+                            <a href={resource.url} target="_blank" rel="noreferrer">{resource.title} ↗</a>
+                            <p>{resource.note}</p>
+                            <div className="resource-scores">
+                              <label>
+                                易学度
+                                <select value={resourceRatings[key] ?? resource.ease} onChange={(event) => rateResource(key, Number(event.target.value))}>
+                                  {[5, 4.5, 4, 3.5, 3].map((value) => <option value={value} key={value}>{value}</option>)}
+                                </select>
+                                <em>{resourceRatings[key] ? "我的评价" : "编辑初评"}</em>
+                              </label>
+                              <span>专业度 <b>{resource.professional}</b> <em>编辑评估</em></span>
+                            </div>
+                          </article>
+                        );
+                      })}
+                  </div>
+                </aside>
+              )}
             </div>
+          </section>
+        )}
+
+        {activeTab === "roles" && (
+          <section className="module shell">
+            <div className="module-toolbar">
+              <div>
+                <h1>岗位机会</h1>
+                <p>精确 JD 与官方招聘检索分开呈现；不把检索入口伪装成独立职位。</p>
+              </div>
+              <div className="evidence-summary">
+                <span><b>{jobSignals.filter((item) => item.evidenceLevel === "精确 JD").length}</b> 精确 JD</span>
+                <span><b>{jobSignals.filter((item) => item.evidenceLevel === "官方招聘检索").length}</b> 官方检索组合</span>
+                <span><b>10</b> 岗位类型</span>
+              </div>
+            </div>
+
+            <section className="role-ranking">
+              <div className="section-heading">
+                <div><h2>转型方向排序</h2><p>按你的前端年限计算迁移匹配度。</p></div>
+                <Segmented
+                  value={experience}
+                  label="经验档位"
+                  items={experienceLevels.map((item) => ({ value: item.id, label: item.label }))}
+                  onChange={chooseExperience}
+                />
+              </div>
+              <div className="role-rank-list">
+                {[...rolePaths]
+                  .sort((a, b) => b.fits[experience] - a.fits[experience])
+                  .map((role, index) => (
+                    <button
+                      key={role.id}
+                      className={targetRole === role.id ? "active" : ""}
+                      onClick={() => { chooseTargetRole(role.id); setRoleFilter(role.id); }}
+                    >
+                      <span>{String(index + 1).padStart(2, "0")}</span>
+                      <div><strong>{role.name}</strong><small>{role.bridge.slice(0, 2).join(" · ")}</small></div>
+                      <b>{role.fits[experience]}%</b>
+                    </button>
+                  ))}
+              </div>
+            </section>
+
+            <section className="job-library">
+              <div className="job-filters">
+                <input value={jobSearch} onChange={(event) => setJobSearch(event.target.value)} placeholder="搜索公司、职位或关键词" />
+                <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
+                  <option>全部</option>
+                  {rolePaths.map((role) => <option value={role.id} key={role.id}>{role.name}</option>)}
+                </select>
+                <select value={companyFilter} onChange={(event) => setCompanyFilter(event.target.value)}>
+                  <option>全部</option>
+                  {companySources.map((company) => <option value={company.name} key={company.id}>{company.name}</option>)}
+                </select>
+                <select value={evidenceFilter} onChange={(event) => setEvidenceFilter(event.target.value)}>
+                  <option>全部</option>
+                  <option>精确 JD</option>
+                  <option>官方招聘检索</option>
+                </select>
+                <select value={jobSort} onChange={(event) => setJobSort(event.target.value as JobSortKey)}>
+                  <option value="match">按匹配度</option>
+                  <option value="captured">按采集日期</option>
+                </select>
+              </div>
+              <div className="data-note">
+                <b>数据口径</b>
+                <span>精确 JD 记录职位 ID、发布时间和原始链接；官方检索组合用于持续侦察，打开后仍需核验城市、状态和薪资。角色薪资区间是北京同类岗位参考，不等于企业报价。</span>
+              </div>
+              <div className="job-table">
+                {filteredJobs.slice(0, jobVisibleCount).map((job) => (
+                  <article key={job.id}>
+                    <div className="job-main">
+                      <div className="job-company"><span>{job.company.slice(0, 1)}</span><strong>{job.company}</strong></div>
+                      <div>
+                        <div className="job-title-row">
+                          <h3>{job.title}</h3>
+                          <em className={job.evidenceLevel === "精确 JD" ? "verified" : ""}>{job.evidenceLevel}</em>
+                        </div>
+                        <p>{job.summary}</p>
+                        <div className="chip-row">{job.keywords.slice(0, 4).map((item) => <span key={item}>{item}</span>)}</div>
+                      </div>
+                    </div>
+                    <div className="job-facts">
+                      <span><small>地点</small>{job.location}</span>
+                      <span>
+                        <small>薪资</small>{job.salary}
+                        <a
+                          className="salary-source"
+                          href={`https://www.zhipin.com/web/geek/job?query=${encodeURIComponent(job.role)}&city=101010100`}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={job.salaryNote}
+                        >
+                          北京同类岗位检索 ↗
+                        </a>
+                      </span>
+                      <span><small>经验</small>{job.experience}</span>
+                      <span><small>职位 ID</small>{job.jobId}</span>
+                      <span><small>发布 / 采集</small>{job.published} / {job.captured}</span>
+                    </div>
+                    <div className="job-actions">
+                      <select
+                        value={applications[job.id] ?? ""}
+                        onChange={(event) => updateApplication(job.id, event.target.value as ApplicationStatus)}
+                        aria-label={`更新 ${job.title} 进度`}
+                      >
+                        <option value="" disabled>加入跟进</option>
+                        {applicationStatuses.map((status) => <option key={status}>{status}</option>)}
+                      </select>
+                      <a href={job.source} target="_blank" rel="noreferrer">{job.sourceLabel} ↗</a>
+                    </div>
+                  </article>
+                ))}
+              </div>
+              {jobVisibleCount < filteredJobs.length && (
+                <button className="load-more" onClick={() => setJobVisibleCount((value) => value + 20)}>
+                  再显示 20 条 · 剩余 {filteredJobs.length - jobVisibleCount}
+                </button>
+              )}
+            </section>
+          </section>
+        )}
+
+        {activeTab === "interview" && (
+          <section className="module shell">
+            <div className="module-toolbar">
+              <div>
+                <h1>面试训练</h1>
+                <p>练习模式可看提示与参考答案；正式模拟连续 5 题并隐藏答案。</p>
+              </div>
+              <div className="interview-mode-actions">
+                {interviewMode === "practice" ? (
+                  <button className="primary-action" onClick={startFormalInterview}>开始 5 题正式模拟</button>
+                ) : (
+                  <>
+                    <span>正式模拟 {formalIndex + 1} / {formalQuestionIds.length}</span>
+                    <button onClick={exitFormalInterview}>退出模拟</button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="interview-summary">
+              {[
+                ["有效回答", validAttempts.length],
+                ["平均总分", averages.score || "—"],
+                ["结构", averages.structure || "—"],
+                ["证据", averages.evidence || "—"],
+                ["深度", averages.depth || "—"],
+              ].map(([label, value]) => (
+                <span key={label as string}>
+                  <small>{label}</small>
+                  <b>{value}</b>
+                </span>
+              ))}
+              <p>
+                {validAttempts.length
+                  ? `当前最弱维度是${weakestDimension[1]}；完成更多有效回答后再判断趋势。`
+                  : "无效、重复或纯数字回答不会进入统计。"}
+              </p>
+            </div>
+
+            <div className={`interview-layout ${interviewMode === "formal" ? "formal" : ""}`}>
+              {interviewMode === "practice" && (
+                <aside className="question-bank">
+                  <div className="question-filter">
+                    <label>岗位题库</label>
+                    <select value={questionRole} onChange={(event) => setQuestionRole(event.target.value)}>
+                      <option>全部</option>
+                      {rolePaths.map((role) => <option value={role.id} key={role.id}>{role.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="question-list">
+                    {filteredQuestions.map((question) => (
+                      <button
+                        key={question.id}
+                        className={selectedQuestion.id === question.id ? "active" : ""}
+                        onClick={() => chooseQuestion(question)}
+                      >
+                        <span><em>{question.category}</em><b>{question.frequency} 组来源</b></span>
+                        <strong>{question.question}</strong>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="source-method">
+                    <b>{interviewEvidence.length} 个独立链接</b>
+                    <p>频次按“该问题在多少个已标注来源中出现”统计，不把一篇汇总拆成多场面经。</p>
+                  </div>
+                </aside>
+              )}
+
+              <div className="interview-workspace">
+                <section className="question-card">
+                  <div className="question-meta">
+                    <span>{selectedQuestion.category}</span>
+                    <b>{selectedQuestion.frequency} / {interviewEvidence.length} 来源出现</b>
+                    <em>{formatTime(seconds)}</em>
+                  </div>
+                  <h2>{selectedQuestion.question}</h2>
+                  <div className="question-purpose">
+                    <strong>面试官真正想看什么</strong>
+                    <p><b>考察：</b>{selectedQuestion.purpose.tests}</p>
+                    <p><b>期待：</b>{selectedQuestion.purpose.expects}</p>
+                  </div>
+                  {interviewMode === "practice" && (
+                    <div className="answer-frame">
+                      {selectedQuestion.answerFrame.map((item, index) => <span key={item}>{index + 1}. {item}</span>)}
+                    </div>
+                  )}
+                </section>
+
+                <section className="answer-studio">
+                  <div className="answer-toolbar">
+                    <Segmented
+                      value={inputMode}
+                      label="回答输入方式"
+                      items={[{ value: "voice", label: "语音优先" }, { value: "text", label: "文本输入" }]}
+                      onChange={setInputMode}
+                    />
+                    <span>{answer.length} 字</span>
+                  </div>
+                  {inputMode === "voice" && (
+                    <button className={`voice-control ${isListening ? "listening" : ""}`} onClick={startVoiceInput}>
+                      <i>{isListening ? "■" : "●"}</i>
+                      <span><strong>{isListening ? "停止并保留转写" : "开始语音回答"}</strong><small>{voiceMessage}</small></span>
+                    </button>
+                  )}
+                  <textarea
+                    value={answer}
+                    onChange={(event) => setAnswer(event.target.value)}
+                    placeholder="按结论 → 方案 → 证据 → 取舍 → 复盘组织回答。语音转写也会实时写入这里。"
+                    rows={10}
+                  />
+                  {voiceInterim && <p className="voice-live">实时：{voiceInterim}</p>}
+                  {modelError && <p className="inline-alert">{modelError}</p>}
+                  <button className="review-button" disabled={isReviewing || !answer.trim()} onClick={submitAnswer}>
+                    {isReviewing ? "DeepSeek 正在评分…" : "提交评分"}
+                  </button>
+                </section>
+
+                {review && (
+                  <section className="review-panel">
+                    <div className="review-score">
+                      <strong>{review.score}</strong>
+                      <div><b>{scoreLabel(review.score)}</b><span>{review.engine === "model" ? "DeepSeek 模型评分" : "本地结构评分"}</span></div>
+                    </div>
+                    <div className="dimension-grid">
+                      {[["结构", review.structure], ["证据", review.evidence], ["深度", review.depth]].map(([label, value]) => (
+                        <span key={label as string}><small>{label}</small><b>{value}</b><i><em style={{ width: `${value}%` }} /></i></span>
+                      ))}
+                    </div>
+                    <div className="annotated-answer">
+                      <small>回答标记 · 绿色为模型识别的有效亮点</small>
+                      <p>
+                        {answer.split(/(?<=[。！？；])/).map((sentence, index) => {
+                          const strong =
+                            review.annotations.some((item) => sentence.includes(item.quote)) ||
+                            selectedQuestion.keywords.some((keyword) => sentence.toLowerCase().includes(keyword.toLowerCase())) ||
+                            /\d|%|用户|指标|结果|成本/.test(sentence);
+                          return strong ? <mark key={index}>{sentence}</mark> : <span key={index}>{sentence}</span>;
+                        })}
+                      </p>
+                    </div>
+                    <div className="review-columns">
+                      <section>
+                        <h3>优秀点</h3>
+                        {review.strengths.length ? review.strengths.map((item) => <p key={item}>✓ {item}</p>) : <p className="muted">本次未识别到明确亮点。</p>}
+                      </section>
+                      <section>
+                        <h3>不足与回答示例</h3>
+                        {review.improvements.map((item) => (
+                          <article key={item.point}><strong>{item.point}</strong><p>{item.example}</p></article>
+                        ))}
+                      </section>
+                    </div>
+                    <div className="weak-links">
+                      <span>去补薄弱项</span>
+                      <button onClick={() => {
+                        const id = weakKnowledgeMap[selectedQuestion.category] ?? "eval";
+                        setSelectedKnowledgeId(id);
+                        switchTab("roadmap");
+                      }}>学习路线：{knowledge.find((item) => item.id === (weakKnowledgeMap[selectedQuestion.category] ?? "eval"))?.name}</button>
+                      <button onClick={() => {
+                        setFlashcardModule(weakKnowledgeMap[selectedQuestion.category] ?? "eval");
+                        setPracticeMode("flashcards");
+                        switchTab("practice");
+                      }}>刷对应闪卡</button>
+                      <button onClick={() => {
+                        setSelectedDrillId(weakKnowledgeMap[selectedQuestion.category] ?? "eval");
+                        setPracticeMode("drills");
+                        switchTab("practice");
+                      }}>做专项任务</button>
+                    </div>
+                    <div className="review-actions">
+                      <button onClick={retryQuestion}>重新回答本题</button>
+                      <button className="primary-action" onClick={nextQuestion}>
+                        {interviewMode === "formal" && formalIndex === formalQuestionIds.length - 1 ? "完成模拟" : "下一题"}
+                      </button>
+                    </div>
+                  </section>
+                )}
+
+                {interviewMode === "practice" && (
+                  <details className="reference-answer">
+                    <summary>参考答案 <span>结构提纲 / 完整口述</span></summary>
+                    <div className="reference-body">
+                      <Segmented
+                        value={referenceMode}
+                        label="参考答案形态"
+                        items={[{ value: "structured", label: "结构化提纲" }, { value: "full", label: "完整优质回答" }]}
+                        onChange={setReferenceMode}
+                      />
+                      {referenceMode === "structured" ? (
+                        <>
+                          <blockquote>{selectedQuestion.reference.thesis}</blockquote>
+                          <div className="reference-grid">
+                            {selectedQuestion.reference.sections.map((section, index) => (
+                              <article key={section.label}><span>{index + 1}</span><strong>{section.label}</strong><p>{section.content}</p></article>
+                            ))}
+                          </div>
+                          <div className="reference-evidence">
+                            <section><h3>必须有的证据</h3>{selectedQuestion.reference.evidence.map((item) => <p key={item}>+ {item}</p>)}</section>
+                            <section><h3>常见失分点</h3>{selectedQuestion.reference.pitfalls.map((item) => <p key={item}>× {item}</p>)}</section>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="full-answer"><p>{selectedQuestion.reference.fullAnswer}</p></div>
+                      )}
+                    </div>
+                  </details>
+                )}
+
+                {questionAttempts.length > 0 && (
+                  <section className="answer-history">
+                    <div className="card-heading">
+                      <div><small>当前设备保存</small><h2>本题进步曲线</h2></div>
+                      <b>{questionAttempts.length} 次有效回答</b>
+                    </div>
+                    <ScoreTrend attempts={questionAttempts.slice(-8)} />
+                    <div className="history-list">
+                      {[...questionAttempts].reverse().map((attempt, index) => (
+                        <details key={attempt.id}>
+                          <summary>
+                            <span>第 {questionAttempts.length - index} 次 · {formatTime(attempt.duration)}</span>
+                            <b>{attempt.review.score} 分</b>
+                            <time>{new Date(attempt.createdAt).toLocaleString("zh-CN")}</time>
+                          </summary>
+                          <div>
+                            <p>{attempt.answer}</p>
+                            {attempt.review.improvements.map((item) => <p key={item.point}><strong>{item.point}</strong> {item.example}</p>)}
+                            <button className="danger-text" onClick={() => deleteAttempt(attempt.id)}>删除这次测试记录</button>
+                          </div>
+                        </details>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                <details className="source-drawer">
+                  <summary>查看本题 {selectedQuestionSources.length} 个独立来源</summary>
+                  <div>
+                    {selectedQuestionSources.map((source) => source && (
+                      <a href={source.url} target="_blank" rel="noreferrer" key={source.id}>
+                        <span>{source.label}</span><small>{source.kind} · {source.published}</small>
+                      </a>
+                    ))}
+                  </div>
+                </details>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeTab === "practice" && (
+          <section className="module shell">
+            <div className="module-toolbar">
+              <div>
+                <h1>刻意练习</h1>
+                <p>闪卡做间隔重复；脑图定位先修关系；专项任务提交真实产物并保留评审历史。</p>
+              </div>
+              <div className="practice-stats">
+                <span><b>{dueFlashcards.length}</b> 今日待复习</span>
+                <span><b>{masteredCards}</b> 稳定掌握</span>
+                <span><b>{drillAttempts.length}</b> 任务提交</span>
+              </div>
+            </div>
+
+            <Segmented
+              value={practiceMode}
+              label="刻意练习模式"
+              items={[
+                { value: "flashcards", label: "闪卡" },
+                { value: "graph", label: "知识脑图" },
+                { value: "drills", label: "专项任务" },
+              ]}
+              onChange={setPracticeMode}
+            />
 
             {practiceMode === "flashcards" && (
               <div className="flashcard-lab">
-                <div className="flashcard-toolbar">
-                  <label>
-                    知识模块
-                    <select
-                      value={flashcardModule}
-                      onChange={(event) => setFlashcardModule(event.target.value)}
-                    >
+                <div className="practice-toolbar">
+                  <label>知识模块
+                    <select value={flashcardModule} onChange={(event) => setFlashcardModule(event.target.value)}>
                       <option value="全部">全部 14 个模块</option>
-                      {knowledge.map((item) => (
-                        <option value={item.id} key={item.id}>
-                          {item.name}
-                        </option>
-                      ))}
+                      {knowledge.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}
                     </select>
                   </label>
-                  <label>
-                    难度
-                    <select
-                      value={flashcardDifficulty}
-                      onChange={(event) => setFlashcardDifficulty(event.target.value)}
-                    >
-                      <option>全部</option>
-                      <option>低</option>
-                      <option>中</option>
-                      <option>高</option>
+                  <label>难度
+                    <select value={flashcardDifficulty} onChange={(event) => setFlashcardDifficulty(event.target.value)}>
+                      <option>全部</option><option>低</option><option>中</option><option>高</option>
                     </select>
                   </label>
-                  <div className="keyboard-hint">
-                    <span>←</span><span>→</span> 切题
-                    <kbd>Space</kbd> 翻面
-                  </div>
+                  <span className="keyboard-hint">← → 切题 · Space 翻面 · 1—4 评分</span>
                 </div>
                 <div className="flashcard-progress">
-                  <span>
-                    CARD {String(flashcardIndex + 1).padStart(2, "0")} /{" "}
-                    {filteredFlashcards.length}
-                  </span>
-                  <i>
-                    <b
-                      style={{
-                        width: `${((flashcardIndex + 1) / filteredFlashcards.length) * 100}%`,
-                      }}
-                    />
-                  </i>
-                  <em>{knownCards.length} 张已掌握</em>
+                  <span>{flashcardIndex + 1} / {Math.max(1, filteredFlashcards.length)}</span>
+                  <i><em style={{ width: `${((flashcardIndex + 1) / Math.max(1, filteredFlashcards.length)) * 100}%` }} /></i>
+                  <b>{dueFlashcards.length ? "当前为到期卡片" : "今日到期卡已清空"}</b>
                 </div>
-                <button
-                  className={`flashcard ${flashcardFlipped ? "flipped" : ""}`}
-                  onClick={() => setFlashcardFlipped((value) => !value)}
-                >
-                  <small>
+                <button className={`flashcard ${flashcardFlipped ? "flipped" : ""}`} onClick={() => setFlashcardFlipped((value) => !value)}>
+                  <div className="flashcard-meta">
                     <span>{currentFlashcard.category}</span>
-                    <b className={`difficulty difficulty-${currentFlashcard.difficulty}`}>
-                      {currentFlashcard.difficulty}难度
-                    </b>
-                  </small>
-                  <div className="flashcard-front">
-                    <span>问题</span>
-                    <h2>{currentFlashcard.front}</h2>
-                    <p>提示：{currentFlashcard.hint}</p>
+                    <b className={`difficulty-${currentFlashcard.difficulty}`}>{currentFlashcard.difficulty}难度</b>
+                    <em>记忆等级 {flashcardSchedule[currentFlashcard.id]?.level ?? 0}</em>
                   </div>
-                  <div className="flashcard-back">
-                    <span>答案</span>
-                    <h2>{currentFlashcard.back}</h2>
-                    <p>空格键或点击卡片可返回问题</p>
+                  <div className="flashcard-content">
+                    <small>{flashcardFlipped ? "答案" : "问题"}</small>
+                    <h2>{flashcardFlipped ? currentFlashcard.back : currentFlashcard.front}</h2>
+                    <p>{flashcardFlipped ? "根据记忆难度评分，系统会安排下次复习。" : `提示：${currentFlashcard.hint}`}</p>
                   </div>
-                  <em>{flashcardFlipped ? "查看问题 ↺" : "点击翻面 ↻"}</em>
+                  <span className="flip-hint">{flashcardFlipped ? "点击返回问题" : "点击查看答案"}</span>
                 </button>
                 <div className="flashcard-nav">
-                  <button
-                    onClick={() => {
-                      setFlashcardFlipped(false);
-                      setFlashcardIndex(
-                        (index) =>
-                          (index - 1 + filteredFlashcards.length) %
-                          filteredFlashcards.length,
-                      );
-                    }}
-                  >
-                    ← 上一题
-                  </button>
-                  <button
-                    onClick={() => {
-                      setFlashcardFlipped(false);
-                      setFlashcardIndex(
-                        (index) => (index + 1) % filteredFlashcards.length,
-                      );
-                    }}
-                  >
-                    下一题 →
-                  </button>
+                  <button onClick={() => { setFlashcardFlipped(false); setFlashcardIndex((index) => (index - 1 + Math.max(1, filteredFlashcards.length)) % Math.max(1, filteredFlashcards.length)); }}>← 上一题</button>
+                  <button onClick={() => { setFlashcardFlipped(false); setFlashcardIndex((index) => (index + 1) % Math.max(1, filteredFlashcards.length)); }}>下一题 →</button>
                 </div>
-                <div className="flashcard-actions">
-                  <button onClick={() => rateFlashcard(false)}>还需要练</button>
-                  <button className="known" onClick={() => rateFlashcard(true)}>已经掌握</button>
-                </div>
+                {flashcardFlipped && (
+                  <div className="spaced-actions">
+                    <button onClick={() => rateFlashcard("again")}><kbd>1</kbd><strong>忘记</strong><small>今天再来</small></button>
+                    <button onClick={() => rateFlashcard("hard")}><kbd>2</kbd><strong>困难</strong><small>1 天后</small></button>
+                    <button onClick={() => rateFlashcard("good")}><kbd>3</kbd><strong>记得</strong><small>至少 3 天</small></button>
+                    <button onClick={() => rateFlashcard("easy")}><kbd>4</kbd><strong>轻松</strong><small>至少 7 天</small></button>
+                  </div>
+                )}
               </div>
             )}
 
             {practiceMode === "graph" && (
-              <div className="knowledge-graph-lab">
-                <div className="graph-heading">
-                  <div>
-                    <small>INTERACTIVE LEARNING MIND MAP</small>
-                    <h2>从前端出发，沿四条主干长成 AI 产品能力。</h2>
+              <div className="mindmap-lab">
+                <div className="mindmap-board">
+                  <div className="mindmap-root">
+                    <small>起点</small><strong>前端开发</strong><span>→ AI 产品工程</span>
                   </div>
-                  <div className="graph-summary">
-                    <span><strong>{knowledge.length}</strong>知识大块</span>
-                    <span><strong>{mindMapBranches.length}</strong>学习主干</span>
-                    <span>
-                      <strong>{knowledge.reduce((sum, item) => sum + item.days, 0)}</strong>
-                      建议天数
-                    </span>
-                  </div>
-                </div>
-                <p className="mindmap-guide">
-                  每个叶子节点都对应“学习路线”中的一个完整知识大块。点击节点查看目标、20/80
-                  入门重点和预计投入。
-                </p>
-                <div className="mindmap-scroll">
-                  <div className="mindmap-canvas">
-                    <div className="mindmap-root">
-                      <small>START HERE</small>
-                      <strong>前端开发</strong>
-                      <span>→ AI 产品工程</span>
-                    </div>
-                    <div className="mindmap-branches">
-                      {mindMapBranches.map((branch, branchIndex) => (
-                        <section
-                          className={`mindmap-branch branch-${branchIndex + 1}`}
-                          key={branch.id}
-                        >
-                          <div className="mindmap-phase">
-                            <small>{branch.caption}</small>
-                            <strong>{branch.title}</strong>
-                          </div>
-                          <div className="mindmap-leaves">
-                            {branch.knowledgeIds.map((knowledgeId) => {
-                              const item = knowledge.find(
-                                (knowledgeItem) => knowledgeItem.id === knowledgeId,
-                              )!;
-                              return (
-                                <button
-                                  className={
-                                    selectedGraphNode === item.id ? "active" : ""
-                                  }
-                                  key={item.id}
-                                  onClick={() => setSelectedGraphNode(item.id)}
-                                >
-                                  <span>{item.name}</span>
-                                  <small>
-                                    {item.category} · {item.days} 天 · 难度 {item.difficulty}/5
-                                  </small>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </section>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <div className="mindmap-inspector">
-                  <div>
-                    <small>{selectedMindMapBranch.title} · 当前知识大块</small>
-                    <strong>{selectedGraph.name}</strong>
-                    <p>{selectedGraph.why}</p>
-                  </div>
-                  <section>
-                    <small>20 / 80 入门优先学</small>
-                    {selectedGraph.levels[0].items.map((item) => (
-                      <span key={item}>✓ {item}</span>
+                  <div className="mindmap-branches">
+                    {mindMapBranches.map((branch, branchIndex) => (
+                      <section key={branch.id} className={`branch branch-${branchIndex + 1}`}>
+                        <header><span>{branchIndex + 1}</span><strong>{branch.title}</strong></header>
+                        <div>
+                          {branch.ids.map((id) => {
+                            const item = knowledge.find((knowledgeItem) => knowledgeItem.id === id)!;
+                            const progress = knowledgeProgress[id] ?? 0;
+                            return (
+                              <button
+                                key={id}
+                                className={`${selectedGraphNode === id ? "active" : ""} mastery-${progress}`}
+                                onClick={() => setSelectedGraphNode(id)}
+                              >
+                                <span>{item.name}</span>
+                                <small>{["未开始", "入门", "进阶", "精通"][progress]} · {item.days} 天</small>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </section>
                     ))}
+                  </div>
+                </div>
+                <aside className="mindmap-inspector">
+                  <small>{selectedGraph.category} · 当前节点</small>
+                  <h2>{selectedGraph.name}</h2>
+                  <p>{selectedGraph.why}</p>
+                  <section>
+                    <h3>先修知识</h3>
+                    {prerequisites[selectedGraph.id]?.length ? prerequisites[selectedGraph.id].map((id) => {
+                      const item = knowledge.find((knowledgeItem) => knowledgeItem.id === id)!;
+                      return <button key={id} onClick={() => setSelectedGraphNode(id)}>{item.name} · {["未开始", "入门", "进阶", "精通"][knowledgeProgress[id] ?? 0]}</button>;
+                    }) : <span>无硬性先修，可直接开始。</span>}
                   </section>
                   <section>
-                    <small>学完能做到</small>
-                    <p>{selectedGraph.outcome}</p>
-                    <em>
-                      重要度 {selectedGraph.importance}/5 · 难度{" "}
-                      {selectedGraph.difficulty}/5 · 预计 {selectedGraph.days} 天
-                    </em>
+                    <h3>20 / 80 入门重点</h3>
+                    {selectedGraph.levels[0].items.map((item) => <span key={item}>✓ {item}</span>)}
                   </section>
-                  <button
-                    onClick={() => {
-                      setExpandedKnowledge(selectedGraph.id);
-                      setRoadmapCategory("全部");
-                      switchTab("roadmap");
-                    }}
-                  >
-                    打开这个知识大块
-                  </button>
-                </div>
+                  <section>
+                    <h3>推荐下一节点</h3>
+                    <span>{knowledge.find((item) => prerequisites[item.id]?.includes(selectedGraph.id) && (knowledgeProgress[item.id] ?? 0) === 0)?.name ?? "先完成当前节点的入门层"}</span>
+                  </section>
+                  <button className="primary-action" onClick={() => { setSelectedKnowledgeId(selectedGraph.id); switchTab("roadmap"); }}>打开学习详情</button>
+                </aside>
               </div>
             )}
 
             {practiceMode === "drills" && (
               <div className="drill-lab">
-                <div className="drill-explainer">
-                  <div>
-                    <small>WHAT IS A DELIBERATE DRILL?</small>
-                    <h2>专项任务不是“看完打卡”，而是一次有验收标准的真实输出。</h2>
-                  </div>
-                  <p>
-                    每个任务对应学习路线中的一个知识模块。完成后你会得到代码、图、测试集、讲解录音或决策文档——这些既能暴露薄弱点，也能成为作品集和面试证据。
-                  </p>
-                  <div>
-                    <span><b>1</b>选一个模块</span>
-                    <span><b>2</b>限时产出</span>
-                    <span><b>3</b>按标准自检</span>
-                  </div>
-                </div>
-                <div className="practice-grid">
-                  {practices.map((practice, index) => {
-                    const done = completedPractice.includes(practice.id);
+                <aside className="drill-list">
+                  <div><h2>14 个专项任务</h2><p>每个任务都对应一个知识大块和明确验收物。</p></div>
+                  {practices.map((practice) => {
+                    const attempts = drillAttempts.filter((item) => item.practiceId === practice.id);
                     return (
-                      <article className={done ? "done" : ""} key={practice.id}>
-                        <button
-                          onClick={() => togglePractice(practice.id)}
-                          aria-label={`${done ? "取消完成" : "标记完成"} ${practice.tag}`}
-                        >
-                          {done ? "✓" : ""}
-                        </button>
-                        <small>
-                          {String(index + 1).padStart(2, "0")} · {practice.minutes} MIN ·{" "}
-                          {practice.difficulty}
-                        </small>
-                        <h2>{practice.tag}</h2>
-                        <p>{practice.task}</p>
-                        <section>
-                          <strong>交付物</strong>
-                          <span>{practice.deliverable}</span>
-                        </section>
-                        <details>
-                          <summary>查看完成标准</summary>
-                          {practice.criteria.map((criterion) => (
-                            <p key={criterion}>✓ {criterion}</p>
-                          ))}
-                        </details>
-                        <em>{done ? "已完成 · 可再次练习" : "产出后再标记完成"}</em>
-                      </article>
+                      <button
+                        key={practice.id}
+                        className={selectedDrillId === practice.id ? "active" : ""}
+                        onClick={() => { setSelectedDrillId(practice.id); setDrillSubmission(""); setDrillReview(null); }}
+                      >
+                        <span>{practice.tag}</span><small>{practice.difficulty} · {practice.minutes} 分钟 · {attempts.length} 次提交</small>
+                      </button>
                     );
                   })}
+                </aside>
+                <div className="drill-workspace">
+                  <section className="drill-brief">
+                    <div><span>{selectedDrill.difficulty}</span><b>{selectedDrill.minutes} 分钟</b></div>
+                    <h2>{selectedDrill.task}</h2>
+                    <p><strong>交付物：</strong>{selectedDrill.deliverable}</p>
+                    <div>
+                      {selectedDrill.criteria.map((item) => <span key={item}>□ {item}</span>)}
+                    </div>
+                  </section>
+                  <section className="submission-box">
+                    <label>提交内容</label>
+                    <textarea
+                      value={drillSubmission}
+                      onChange={(event) => setDrillSubmission(event.target.value)}
+                      placeholder="粘贴方案、代码片段、产物链接、测试结果或复盘。不要只勾选完成。"
+                      rows={10}
+                    />
+                    <button className="primary-action" onClick={submitDrill} disabled={isDrillReviewing}>
+                      {isDrillReviewing ? "模型评审中…" : "提交并评审"}
+                    </button>
+                  </section>
+                  {drillReview && (
+                    <section className="drill-review">
+                      <div><strong>{drillReview.score}</strong><span>{drillReview.engine === "model" ? "模型评审" : "本地检查"}</span></div>
+                      <section><h3>做得好的</h3>{drillReview.strengths.length ? drillReview.strengths.map((item) => <p key={item}>✓ {item}</p>) : <p>尚未识别到明确亮点。</p>}</section>
+                      <section><h3>需要补充</h3>{drillReview.improvements.map((item) => <p key={item}>• {item}</p>)}</section>
+                      <p><strong>下一步：</strong>{drillReview.nextAction}</p>
+                    </section>
+                  )}
+                  {drillAttempts.some((item) => item.practiceId === selectedDrill.id) && (
+                    <section className="drill-history">
+                      <h3>提交历史</h3>
+                      {[...drillAttempts].reverse().filter((item) => item.practiceId === selectedDrill.id).map((attempt) => (
+                        <details key={attempt.id}>
+                          <summary><span>{new Date(attempt.createdAt).toLocaleString("zh-CN")}</span><b>{attempt.review.score} 分</b></summary>
+                          <div><p>{attempt.submission}</p><p><strong>下一步：</strong>{attempt.review.nextAction}</p></div>
+                        </details>
+                      ))}
+                    </section>
+                  )}
                 </div>
               </div>
             )}
-
-            <div className="milestone-section">
-              <div>
-                <small>180-DAY SYSTEM</small>
-                <h2>一个项目，串起六个阶段。</h2>
-                <p>
-                  选择你真正关心的业务问题。每 30 天增加一层能力，而不是做六个互不相关的 Demo。
-                </p>
-              </div>
-              <div className="milestones">
-                {milestones.map((milestone, index) => (
-                  <article key={milestone.days}>
-                    <span>{index + 1}</span>
-                    <small>DAY {milestone.days}</small>
-                    <h3>{milestone.title}</h3>
-                    <p>{milestone.text}</p>
-                  </article>
-                ))}
-              </div>
-            </div>
-
-            <div className="project-callout">
-              <div className="project-orb" />
-              <small>CAPSTONE IDEA</small>
-              <h2>做一个真正有人用的 AI 产品。</h2>
-              <p>
-                例如：设计评审 Agent、代码库知识助手、可访问性诊断器、运营素材工作台。
-                关键不是题目，而是展示真实用户、失败样本、评测指标与工程取舍。
-              </p>
-              <button onClick={() => switchTab("roadmap")}>从路线图开始</button>
-            </div>
           </section>
         )}
       </main>
-
-      <footer className="site-footer">
-        <span>Frontend to AI</span>
-        <p>14 个知识模块 · 100 条岗位观察 · 52 组面经样本 · 更新于 2026-07-30</p>
-        <button onClick={() => switchTab("home")}>返回概览 ↑</button>
-      </footer>
     </div>
   );
 }
