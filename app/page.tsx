@@ -6,7 +6,6 @@ import {
   interviewSources,
   jobs,
   knowledge,
-  knowledgeGraph,
   practices,
   questions,
   rolePaths,
@@ -63,6 +62,33 @@ const milestones = [
   { days: "91—120", title: "可靠", text: "补状态、幂等、重试、降级、安全与人工确认。" },
   { days: "121—150", title: "上线", text: "容器化、监控和灰度；邀请真实用户使用并记录失败。" },
   { days: "151—180", title: "表达", text: "作品集、架构文档、指标复盘与高频模拟面试。" },
+];
+
+const mindMapBranches = [
+  {
+    id: "foundation",
+    title: "01 · 基础认知",
+    caption: "先理解模型，再进入工程",
+    knowledgeIds: ["ml", "llm", "python"],
+  },
+  {
+    id: "application",
+    title: "02 · AI 应用",
+    caption: "让模型连接知识与工具",
+    knowledgeIds: ["prompt", "rag", "agent", "finetune"],
+  },
+  {
+    id: "experience",
+    title: "03 · 体验界面",
+    caption: "发挥前端的迁移优势",
+    knowledgeIds: ["ai-ui", "ai-ux", "next"],
+  },
+  {
+    id: "production",
+    title: "04 · 生产交付",
+    caption: "从 Demo 走向可靠产品",
+    knowledgeIds: ["backend", "eval", "security", "llmops"],
+  },
 ];
 
 function formatTime(seconds: number) {
@@ -220,7 +246,7 @@ export default function Home() {
   const [flashcardIndex, setFlashcardIndex] = useState(0);
   const [flashcardFlipped, setFlashcardFlipped] = useState(false);
   const [knownCards, setKnownCards] = useState<string[]>([]);
-  const [selectedGraphNode, setSelectedGraphNode] = useState("product");
+  const [selectedGraphNode, setSelectedGraphNode] = useState("ai-ui");
 
   const level = experienceLevels.find((item) => item.id === experience)!;
 
@@ -319,20 +345,10 @@ export default function Home() {
     [flashcardDifficulty, flashcardModule],
   );
   const currentFlashcard = filteredFlashcards[flashcardIndex] ?? flashcards[0];
-  const selectedGraph = knowledgeGraph.nodes.find(
-    (node) => node.id === selectedGraphNode,
+  const selectedGraph = knowledge.find((item) => item.id === selectedGraphNode)!;
+  const selectedMindMapBranch = mindMapBranches.find((branch) =>
+    branch.knowledgeIds.includes(selectedGraphNode),
   )!;
-  const graphUpstream = knowledgeGraph.edges
-    .filter(([, to]) => to === selectedGraphNode)
-    .map(([from]) => from);
-  const graphDownstream = knowledgeGraph.edges
-    .filter(([from]) => from === selectedGraphNode)
-    .map(([, to]) => to);
-  const graphRelated = new Set([
-    selectedGraphNode,
-    ...graphUpstream,
-    ...graphDownstream,
-  ]);
 
   useEffect(() => {
     setFlashcardIndex(0);
@@ -1523,7 +1539,7 @@ export default function Home() {
                   onClick={() => setFlashcardFlipped((value) => !value)}
                 >
                   <small>
-                    {currentFlashcard.category}
+                    <span>{currentFlashcard.category}</span>
                     <b className={`difficulty difficulty-${currentFlashcard.difficulty}`}>
                       {currentFlashcard.difficulty}难度
                     </b>
@@ -1575,90 +1591,94 @@ export default function Home() {
               <div className="knowledge-graph-lab">
                 <div className="graph-heading">
                   <div>
-                    <small>INTERACTIVE LEARNING CONSTELLATION</small>
-                    <h2>14 个知识模块，组成一张能力网络。</h2>
+                    <small>INTERACTIVE LEARNING MIND MAP</small>
+                    <h2>从前端出发，沿四条主干长成 AI 产品能力。</h2>
                   </div>
                   <div className="graph-summary">
-                    <span><strong>{knowledgeGraph.nodes.length - 1}</strong>知识节点</span>
-                    <span><strong>{knowledgeGraph.edges.length}</strong>依赖关系</span>
-                    <span><strong>{graphUpstream.length}</strong>当前先修</span>
+                    <span><strong>{knowledge.length}</strong>知识大块</span>
+                    <span><strong>{mindMapBranches.length}</strong>学习主干</span>
+                    <span>
+                      <strong>{knowledge.reduce((sum, item) => sum + item.days, 0)}</strong>
+                      建议天数
+                    </span>
                   </div>
                 </div>
-                <div className="graph-legend">
-                  {["底层", "前端", "应用", "工程", "设计", "质量", "进阶", "结果"].map(
-                    (group) => <span className={`group-${group}`} key={group}>{group}</span>,
-                  )}
-                  <em>点击节点聚焦上下游学习路径</em>
+                <p className="mindmap-guide">
+                  每个叶子节点都对应“学习路线”中的一个完整知识大块。点击节点查看目标、20/80
+                  入门重点和预计投入。
+                </p>
+                <div className="mindmap-scroll">
+                  <div className="mindmap-canvas">
+                    <div className="mindmap-root">
+                      <small>START HERE</small>
+                      <strong>前端开发</strong>
+                      <span>→ AI 产品工程</span>
+                    </div>
+                    <div className="mindmap-branches">
+                      {mindMapBranches.map((branch, branchIndex) => (
+                        <section
+                          className={`mindmap-branch branch-${branchIndex + 1}`}
+                          key={branch.id}
+                        >
+                          <div className="mindmap-phase">
+                            <small>{branch.caption}</small>
+                            <strong>{branch.title}</strong>
+                          </div>
+                          <div className="mindmap-leaves">
+                            {branch.knowledgeIds.map((knowledgeId) => {
+                              const item = knowledge.find(
+                                (knowledgeItem) => knowledgeItem.id === knowledgeId,
+                              )!;
+                              return (
+                                <button
+                                  className={
+                                    selectedGraphNode === item.id ? "active" : ""
+                                  }
+                                  key={item.id}
+                                  onClick={() => setSelectedGraphNode(item.id)}
+                                >
+                                  <span>{item.name}</span>
+                                  <small>
+                                    {item.category} · {item.days} 天 · 难度 {item.difficulty}/5
+                                  </small>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </section>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-                <div className="graph-scroll">
-                  <div className="graph-canvas">
-                    <span className="graph-stage stage-one">01 · 基础输入</span>
-                  <span className="graph-stage stage-two">02 · 能力组合</span>
-                  <span className="graph-stage stage-three">03 · 生产约束</span>
-                  <span className="graph-stage stage-four">04 · 产品结果</span>
-                    {knowledgeGraph.edges.map(([from, to]) => {
-                    const source = knowledgeGraph.nodes.find((node) => node.id === from)!;
-                    const target = knowledgeGraph.nodes.find((node) => node.id === to)!;
-                    const deltaX = target.x - source.x;
-                    const deltaY = target.y - source.y;
-                    return (
-                      <i
-                        className={`graph-edge ${
-                          selectedGraphNode === from || selectedGraphNode === to
-                            ? "active"
-                            : ""
-                        }`}
-                        key={`${from}-${to}`}
-                        style={{
-                          left: `${source.x}%`,
-                          top: `${source.y}%`,
-                          width: `${Math.sqrt(deltaX ** 2 + deltaY ** 2)}%`,
-                          transform: `rotate(${Math.atan2(deltaY, deltaX) * (180 / Math.PI)}deg)`,
-                        }}
-                      />
-                    );
-                    })}
-                    {knowledgeGraph.nodes.map((node) => (
-                    <button
-                      key={node.id}
-                      className={`group-${node.group} ${
-                        node.group === "结果" ? "destination" : ""
-                      } ${selectedGraphNode === node.id ? "active" : ""} ${
-                        graphRelated.has(node.id) ? "related" : "muted"
-                      }`}
-                      style={{ left: `${node.x}%`, top: `${node.y}%` }}
-                      onClick={() => setSelectedGraphNode(node.id)}
-                    >
-                      <i />
-                      <span>{node.label}</span>
-                      <small>{node.group}</small>
-                    </button>
+                <div className="mindmap-inspector">
+                  <div>
+                    <small>{selectedMindMapBranch.title} · 当前知识大块</small>
+                    <strong>{selectedGraph.name}</strong>
+                    <p>{selectedGraph.why}</p>
+                  </div>
+                  <section>
+                    <small>20 / 80 入门优先学</small>
+                    {selectedGraph.levels[0].items.map((item) => (
+                      <span key={item}>✓ {item}</span>
                     ))}
-                  </div>
-                </div>
-                <div className="graph-inspector">
-                  <small>当前节点</small>
-                  <strong>{selectedGraph.label}</strong>
-                  <p>{selectedGraph.description}</p>
-                  <div className="graph-relations">
-                    <section>
-                      <small>建议先修</small>
-                      {graphUpstream.length ? graphUpstream.map((id) => (
-                        <button key={id} onClick={() => setSelectedGraphNode(id)}>
-                          {knowledgeGraph.nodes.find((node) => node.id === id)?.label}
-                        </button>
-                      )) : <span>可直接开始</span>}
-                    </section>
-                    <section>
-                      <small>继续前往</small>
-                      {graphDownstream.length ? graphDownstream.map((id) => (
-                        <button key={id} onClick={() => setSelectedGraphNode(id)}>
-                          {knowledgeGraph.nodes.find((node) => node.id === id)?.label}
-                        </button>
-                      )) : <span>形成最终能力</span>}
-                    </section>
-                  </div>
-                  <button onClick={() => switchTab("roadmap")}>在路线图中学习</button>
+                  </section>
+                  <section>
+                    <small>学完能做到</small>
+                    <p>{selectedGraph.outcome}</p>
+                    <em>
+                      重要度 {selectedGraph.importance}/5 · 难度{" "}
+                      {selectedGraph.difficulty}/5 · 预计 {selectedGraph.days} 天
+                    </em>
+                  </section>
+                  <button
+                    onClick={() => {
+                      setExpandedKnowledge(selectedGraph.id);
+                      setRoadmapCategory("全部");
+                      switchTab("roadmap");
+                    }}
+                  >
+                    打开这个知识大块
+                  </button>
                 </div>
               </div>
             )}

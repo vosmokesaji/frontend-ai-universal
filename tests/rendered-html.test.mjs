@@ -83,6 +83,9 @@ test("v3 includes the expanded roadmap, job, interview and practice systems", as
   assert.match(page, /完整优质回答/);
   assert.match(page, /event\.code === "Space"/);
   assert.match(page, /event\.key === "ArrowLeft"/);
+  assert.match(page, /const mindMapBranches/);
+  assert.match(page, /INTERACTIVE LEARNING MIND MAP/);
+  assert.match(page, /currentFlashcard\.category/);
   assert.match(data, /const flashcardBlueprints/);
   assert.match(data, /fullReferenceAnswers/);
   assert.match(data, /export const practices: PracticeDrill\[\]/);
