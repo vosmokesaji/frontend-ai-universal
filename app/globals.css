@@ -2473,6 +2473,10 @@ select {
   line-height: 1.5;
 }
 
+.review-strengths .review-empty {
+  color: var(--gray-3);
+}
+
 .review-improvements article + article {
   border-top: 1px solid var(--gray-2);
   margin-top: 10px;

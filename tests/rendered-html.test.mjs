@@ -99,3 +99,30 @@ test("v3 includes the expanded roadmap, job, interview and practice systems", as
     "14 knowledge modules should each contain 6 flashcards",
   );
 });
+
+test("model review accepts a zero-strength result for a meaningless answer", async () => {
+  const { normalizeReview } = await import(
+    new URL("../app/api/interview-review/route.ts", import.meta.url)
+  );
+  const answer = "123123123123123123123123123123123123123123123123123123123123123123123123123123";
+  const review = normalizeReview(
+    {
+      score: 0,
+      dimensions: { structure: 0, evidence: 0, depth: 0 },
+      strengths: [],
+      improvements: [
+        {
+          point: "回答没有包含与题目相关的信息",
+          example: "先给出结论，再用项目事实、数据和取舍说明理由。",
+        },
+      ],
+      annotations: [],
+    },
+    answer,
+  );
+
+  assert.ok(review);
+  assert.equal(review.score, 0);
+  assert.deepEqual(review.strengths, []);
+  assert.equal(review.improvements.length, 1);
+});

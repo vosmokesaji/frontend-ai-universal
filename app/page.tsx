@@ -1307,9 +1307,15 @@ export default function Home() {
                     <div className="review-columns">
                       <section className="review-strengths">
                         <small>优秀点</small>
-                        {review.strengths.map((strength) => (
-                          <p key={strength}>✓ {strength}</p>
-                        ))}
+                        {review.strengths.length ? (
+                          review.strengths.map((strength) => (
+                            <p key={strength}>✓ {strength}</p>
+                          ))
+                        ) : (
+                          <p className="review-empty">
+                            本次回答中暂未识别到有效亮点。
+                          </p>
+                        )}
                       </section>
                       <section className="review-improvements">
                         <small>不足与改进示例</small>

@@ -36,6 +36,11 @@ function clampScore(value: unknown) {
   return Number.isFinite(number) ? Math.max(0, Math.min(100, Math.round(number))) : 0;
 }
 
+function isScore(value: unknown) {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number);
+}
+
 function cleanText(value: unknown, maxLength = 500) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
@@ -48,13 +53,24 @@ function cleanList(value: unknown, maxItems: number, maxLength = 500) {
     .slice(0, maxItems);
 }
 
-function normalizeReview(value: unknown, answer: string): ModelReview | null {
+export function normalizeReview(value: unknown, answer: string): ModelReview | null {
   if (!value || typeof value !== "object") return null;
   const candidate = value as Record<string, unknown>;
-  const dimensions =
-    candidate.dimensions && typeof candidate.dimensions === "object"
-      ? (candidate.dimensions as Record<string, unknown>)
-      : {};
+  if (
+    !isScore(candidate.score) ||
+    !candidate.dimensions ||
+    typeof candidate.dimensions !== "object"
+  ) {
+    return null;
+  }
+  const dimensions = candidate.dimensions as Record<string, unknown>;
+  if (
+    !isScore(dimensions.structure) ||
+    !isScore(dimensions.evidence) ||
+    !isScore(dimensions.depth)
+  ) {
+    return null;
+  }
 
   const strengths = cleanList(candidate.strengths, 4);
   const rawImprovements = Array.isArray(candidate.improvements)
@@ -88,7 +104,9 @@ function normalizeReview(value: unknown, answer: string): ModelReview | null {
     )
     .slice(0, 8);
 
-  if (!strengths.length || !improvements.length) return null;
+  // A very poor answer can legitimately have no strengths or annotations.
+  // Improvements remain required so the result is still useful to the learner.
+  if (!improvements.length) return null;
 
   return {
     score: clampScore(candidate.score),
