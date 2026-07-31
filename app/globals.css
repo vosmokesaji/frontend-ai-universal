@@ -2792,24 +2792,19 @@ textarea {
 
 html,
 body {
-  background:
-    radial-gradient(circle at 14% 8%, rgba(255, 255, 255, 0.96), transparent 28%),
-    #eeece8;
+  background: #fafafa;
 }
 
 body {
-  padding: 22px;
+  padding: 0;
 }
 
 .app {
   background: #fafafa;
-  border: 1px solid rgba(17, 19, 24, 0.14);
-  border-radius: 24px;
-  box-shadow:
-    0 24px 70px rgba(23, 27, 32, 0.13),
-    0 4px 14px rgba(23, 27, 32, 0.06);
-  min-height: calc(100vh - 44px);
-  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  min-height: 100vh;
   position: relative;
 }
 
@@ -2820,18 +2815,18 @@ body {
     linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 20%),
     #171b21;
   border: 0;
-  border-radius: 23px 0 0 23px;
-  bottom: 22px;
+  border-radius: 0;
+  bottom: 0;
   box-shadow: inset -1px 0 rgba(255, 255, 255, 0.05);
   display: flex;
   flex-direction: column;
   gap: 26px;
   height: auto;
-  left: 22px;
+  left: 0;
   padding: 28px 14px 24px;
   position: fixed;
   right: auto;
-  top: 22px;
+  top: 0;
   width: 94px;
   z-index: 100;
 }
