@@ -71,12 +71,12 @@ type DrillAttempt = {
   review: DrillReview;
 };
 
-const tabs: { id: TabId; label: string }[] = [
-  { id: "home", label: "工作台" },
-  { id: "roadmap", label: "学习路线" },
-  { id: "roles", label: "岗位机会" },
-  { id: "interview", label: "面试训练" },
-  { id: "practice", label: "刻意练习" },
+const tabs: { id: TabId; label: string; icon: string; short: string }[] = [
+  { id: "home", label: "转型工作台", icon: "⌂", short: "总览" },
+  { id: "roadmap", label: "学习路线", icon: "▤", short: "路线" },
+  { id: "roles", label: "岗位机会", icon: "⌁", short: "岗位" },
+  { id: "interview", label: "面试训练", icon: "▣", short: "面试" },
+  { id: "practice", label: "刻意练习", icon: "☆", short: "练习" },
 ];
 
 const experienceLevels: {
@@ -429,6 +429,23 @@ export default function Home() {
       .find((item) => item && (knowledgeProgress[item.id] ?? 0) < 1) ??
     knowledge.find((item) => (knowledgeProgress[item.id] ?? 0) < 1) ??
     knowledge[0];
+  const routeProgress = Math.round(
+    (Object.values(knowledgeProgress).reduce((sum, value) => sum + value, 0) /
+      (knowledge.length * 3)) *
+      100,
+  );
+  const activePage = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
+  const dashboardSteps = [
+    ...learningPlan
+      .map((id) => knowledge.find((item) => item.id === id))
+      .filter((item): item is (typeof knowledge)[number] => Boolean(item)),
+    ...knowledge,
+  ]
+    .filter(
+      (item, index, source) =>
+        source.findIndex((candidate) => candidate.id === item.id) === index,
+    )
+    .slice(0, 5);
 
   const globalResults = useMemo(() => {
     const query = globalSearch.trim().toLowerCase();
@@ -918,9 +935,9 @@ export default function Home() {
 
   return (
     <div className="app">
-      <header className="global-nav">
+      <aside className="global-nav">
         <button className="wordmark" onClick={() => switchTab("home")} aria-label="打开工作台">
-          <span>F→AI</span>
+          <span>F</span>
         </button>
         <nav className="tab-bar" role="tablist" aria-label="网站模块">
           {tabs.map((tab) => (
@@ -930,29 +947,49 @@ export default function Home() {
               aria-selected={activeTab === tab.id}
               className={activeTab === tab.id ? "active" : ""}
               onClick={() => switchTab(tab.id)}
+              title={tab.label}
             >
-              {tab.label}
+              <span aria-hidden="true">{tab.icon}</span>
+              <em>{tab.short}</em>
             </button>
           ))}
         </nav>
-        <div className="global-search">
-          <span>⌕</span>
-          <input
-            value={globalSearch}
-            onChange={(event) => setGlobalSearch(event.target.value)}
-            placeholder="搜索知识、岗位、题目"
-            aria-label="全站搜索"
-          />
-          {globalResults.length > 0 && (
-            <div className="search-results">
-              {globalResults.map((result) => (
-                <button key={`${result.type}-${result.id}`} onClick={() => openSearchResult(result)}>
-                  <small>{result.type}</small>
-                  <span>{result.label}</span>
-                </button>
-              ))}
-            </div>
-          )}
+        <button className="rail-settings" aria-label="设置" title="设置">
+          <span aria-hidden="true">⚙</span>
+          <em>设置</em>
+        </button>
+      </aside>
+
+      <header className="dashboard-header">
+        <div className="dashboard-title">
+          <span>Frontend → AI</span>
+          <h1>{activePage.label}</h1>
+        </div>
+        <div className="dashboard-header-actions">
+          <span className="header-progress">
+            <i><b style={{ width: `${routeProgress}%` }} /></i>
+            {routeProgress}%
+          </span>
+          <div className="global-search">
+            <span>⌕</span>
+            <input
+              value={globalSearch}
+              onChange={(event) => setGlobalSearch(event.target.value)}
+              placeholder="搜索知识、岗位、题目"
+              aria-label="全站搜索"
+            />
+            {globalResults.length > 0 && (
+              <div className="search-results">
+                {globalResults.map((result) => (
+                  <button key={`${result.type}-${result.id}`} onClick={() => openSearchResult(result)}>
+                    <small>{result.type}</small>
+                    <span>{result.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <span className="dashboard-avatar" aria-label="个人进度">F</span>
         </div>
       </header>
 
@@ -984,21 +1021,93 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="dashboard-grid">
-              <article className="dashboard-primary">
-                <div className="card-heading">
-                  <div>
-                    <small>下一步</small>
-                    <h2>{nextKnowledge.name}</h2>
-                  </div>
-                  <span>{Math.max(3, Math.round(nextKnowledge.days * level.multiplier))} 天</span>
+            <div className="reference-dashboard">
+              <section className="route-progress-card dashboard-surface">
+                <div className="surface-heading">
+                  <div><small>学习计划</small><h2>路线推进</h2></div>
+                  <button onClick={() => switchTab("roadmap")}>查看全部</button>
                 </div>
-                <p>{nextKnowledge.outcome}</p>
-                <div className="task-checklist">
-                  {nextKnowledge.levels[0].items.slice(0, 3).map((item) => (
-                    <span key={item}>□ {item}</span>
+                <div className="route-progress-list">
+                  {dashboardSteps.map((item) => {
+                    const progress = knowledgeProgress[item.id] ?? 0;
+                    const percent = Math.round((progress / 3) * 100);
+                    return (
+                      <button key={item.id} onClick={() => { setSelectedKnowledgeId(item.id); switchTab("roadmap"); }}>
+                        <span className={`route-node route-node-${progress}`}>{progress >= 1 ? "✓" : ""}</span>
+                        <div><strong>{item.name}</strong><small>{["未开始", "入门", "进阶", "精通"][progress]}</small></div>
+                        <b>{percent}%</b>
+                        <i><em style={{ width: `${percent}%` }} /></i>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section className="activity-card dashboard-surface">
+                <div className="surface-heading">
+                  <div><small>当前状态</small><h2>任务清单</h2></div>
+                  <span>{today().slice(5).replace("-", "/")}</span>
+                </div>
+                <div className="activity-list">
+                  {([
+                    ["路线", `${completedKnowledge} / ${knowledge.length} 个知识块已入门`, "roadmap" as TabId],
+                    ["闪卡", `${dueFlashcards.length} 张等待复习`, "practice" as TabId],
+                    ["岗位", `${savedJobs} 个岗位在跟进`, "roles" as TabId],
+                    ["面试", `${validAttempts.length} 次有效回答`, "interview" as TabId],
+                    ["任务", `${drillAttempts.length} 次专项提交`, "practice" as TabId],
+                  ] as [string, string, TabId][]).map(([label, text, tab]) => (
+                    <button key={label} onClick={() => switchTab(tab)}>
+                      <span>{label.slice(0, 1)}</span>
+                      <div><strong>{label}</strong><small>{text}</small></div>
+                      <i>✓</i>
+                      <time>{today().slice(5).replace("-", "/")}</time>
+                    </button>
                   ))}
                 </div>
+              </section>
+
+              <section className="trend-dashboard-card dashboard-surface">
+                <div className="surface-heading">
+                  <div><small>面试训练</small><h2>得分趋势</h2></div>
+                  <button onClick={() => switchTab("interview")}>开始训练</button>
+                </div>
+                <ScoreTrend attempts={validAttempts.slice(-8)} />
+                <div className="trend-metrics">
+                  <span><b>{averages.score || "—"}</b><small>总分</small></span>
+                  <span><b>{averages.structure || "—"}</b><small>结构</small></span>
+                  <span><b>{averages.depth || "—"}</b><small>深度</small></span>
+                </div>
+              </section>
+
+              <section className="number-dashboard-card dashboard-surface">
+                <div className="number-main">
+                  <div><small>今日待办</small><strong>{dueFlashcards.length + learningPlan.length}</strong></div>
+                  <div
+                    className="progress-ring"
+                    style={{ background: `conic-gradient(#0a6cff ${routeProgress * 3.6}deg, #e8e9ec 0deg)` }}
+                  >
+                    <span>{routeProgress}%</span>
+                  </div>
+                </div>
+                <div className="number-list">
+                  <button onClick={() => switchTab("roadmap")}><i className="dot red" /><span>学习计划</span><b>{learningPlan.length}</b></button>
+                  <button onClick={() => switchTab("practice")}><i className="dot amber" /><span>今日闪卡</span><b>{dueFlashcards.length}</b></button>
+                  <button onClick={() => switchTab("roles")}><i className="dot blue" /><span>收藏岗位</span><b>{savedJobs}</b></button>
+                </div>
+              </section>
+
+              <section className="next-action-card dashboard-surface">
+                <div className="next-action-icon">→</div>
+                <div>
+                  <small>推荐下一步</small>
+                  <h2>{nextKnowledge.name}</h2>
+                  <p>{nextKnowledge.outcome}</p>
+                </div>
+                <dl>
+                  <div><dt>预计投入</dt><dd>{Math.max(3, Math.round(nextKnowledge.days * level.multiplier))} 天</dd></div>
+                  <div><dt>目标岗位</dt><dd>{currentRole.name}</dd></div>
+                  <div><dt>迁移匹配</dt><dd>{currentRole.fits[experience]}%</dd></div>
+                </dl>
                 <button
                   className="primary-action"
                   onClick={() => {
@@ -1006,54 +1115,25 @@ export default function Home() {
                     switchTab("roadmap");
                   }}
                 >
-                  打开知识大块
+                  打开学习详情
                 </button>
-              </article>
-
-              <article className="metric-card">
-                <small>路线进度</small>
-                <strong>{completedKnowledge}<em> / {knowledge.length}</em></strong>
-                <p>{learningPlan.length} 个知识大块在计划中</p>
-                <button onClick={() => switchTab("roadmap")}>管理计划</button>
-              </article>
-              <article className="metric-card">
-                <small>今日闪卡</small>
-                <strong>{dueFlashcards.length}</strong>
-                <p>{masteredCards} 张达到稳定掌握</p>
-                <button onClick={() => { setPracticeMode("flashcards"); switchTab("practice"); }}>开始复习</button>
-              </article>
-              <article className="metric-card">
-                <small>面试表现</small>
-                <strong>{averages.score || "—"}</strong>
-                <p>{validAttempts.length ? `最弱维度：${weakestDimension[1]} ${weakestDimension[2]} 分` : "尚无有效回答"}</p>
-                <button onClick={() => switchTab("interview")}>继续训练</button>
-              </article>
-              <article className="metric-card">
-                <small>岗位跟进</small>
-                <strong>{savedJobs}</strong>
-                <p>{Object.values(applications).filter((item) => item === "面试中").length} 个进入面试</p>
-                <button onClick={() => switchTab("roles")}>查看清单</button>
-              </article>
-            </div>
-
-            <div className="dashboard-lower">
-              <section className="panel">
-                <div className="card-heading">
-                  <div><small>目标岗位</small><h2>{currentRole.name}</h2></div>
-                  <b>{currentRole.fits[experience]}% 迁移匹配</b>
-                </div>
-                <p>{currentRole.description}</p>
-                <div className="chip-row">
-                  {currentRole.learn.map((item) => <span key={item}>{item}</span>)}
-                </div>
-                <button onClick={() => { setRoleFilter(currentRole.id); switchTab("roles"); }}>查看岗位证据</button>
               </section>
-              <section className="panel">
-                <div className="card-heading">
-                  <div><small>最近得分</small><h2>回答趋势</h2></div>
-                  <b>{validAttempts.length} 次有效回答</b>
+
+              <section className="milestone-card dashboard-surface">
+                <div className="milestone-track">
+                  {dashboardSteps.map((item, index) => {
+                    const progress = knowledgeProgress[item.id] ?? 0;
+                    return (
+                      <button key={item.id} onClick={() => { setSelectedKnowledgeId(item.id); switchTab("roadmap"); }}>
+                        <span className={progress ? "done" : index === completedKnowledge ? "current" : ""}>
+                          {progress ? "✓" : index + 1}
+                        </span>
+                        <strong>{item.name}</strong>
+                      </button>
+                    );
+                  })}
                 </div>
-                <ScoreTrend attempts={validAttempts.slice(-6)} />
+                <button className="milestone-date" onClick={() => switchTab("roadmap")}>▣ 查看路线</button>
               </section>
             </div>
           </section>

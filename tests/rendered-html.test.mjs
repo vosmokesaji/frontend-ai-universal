@@ -37,7 +37,11 @@ test("server-renders the universal frontend-to-AI product", async () => {
   assert.match(html, /刻意练习/);
   assert.match(html, /0—2 年/);
   assert.match(html, /今日闪卡/);
-  assert.match(html, /岗位跟进/);
+  assert.match(html, /收藏岗位/);
+  assert.match(html, /reference-dashboard/);
+  assert.match(html, /route-progress-card/);
+  assert.match(html, /milestone-track/);
+  assert.match(html, /Frontend → AI/);
   assert.doesNotMatch(html, /为 10 年前端/);
   assert.doesNotMatch(html, /A PRACTICAL GUIDE|让前端，|向智能生长|AI Workbench/);
   assert.doesNotMatch(html, /codex-preview/);
