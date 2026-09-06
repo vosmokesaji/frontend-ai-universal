@@ -3,11 +3,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  deprioritizedTopics,
   flashcards,
   knowledge,
   practices,
   rolePaths,
   type ExperienceId,
+  type LearningVerdict,
   type QuestionV3,
 } from "./data-v3";
 import {
@@ -94,7 +96,7 @@ const mindMapBranches = [
   { id: "foundation", title: "基础认知", ids: ["ml", "llm", "python"] },
   { id: "application", title: "AI 应用", ids: ["prompt", "rag", "agent", "finetune"] },
   { id: "experience", title: "体验界面", ids: ["ai-ui", "ai-ux", "next"] },
-  { id: "production", title: "生产交付", ids: ["backend", "eval", "security", "llmops"] },
+  { id: "production", title: "生产交付", ids: ["ai-coding", "backend", "eval", "security", "llmops"] },
 ];
 
 const prerequisites: Record<string, string[]> = {
@@ -102,10 +104,11 @@ const prerequisites: Record<string, string[]> = {
   llm: ["ml"],
   python: [],
   prompt: ["llm"],
+  "ai-coding": ["prompt"],
   rag: ["python", "llm", "prompt"],
   agent: ["python", "prompt", "rag"],
   finetune: ["ml", "llm", "python"],
-  "ai-ui": ["next", "prompt"],
+  "ai-ui": ["prompt"],
   "ai-ux": ["ai-ui"],
   next: [],
   backend: ["python"],
@@ -241,6 +244,7 @@ export default function Home() {
   const [roadmapSort, setRoadmapSort] = useState<RoadmapSortKey>("importance");
   const [roadmapSortDirection, setRoadmapSortDirection] = useState<"asc" | "desc">("desc");
   const [roadmapCategory, setRoadmapCategory] = useState("全部");
+  const [roadmapVerdict, setRoadmapVerdict] = useState<"全部" | LearningVerdict>("全部");
   const [selectedKnowledgeId, setSelectedKnowledgeId] = useState<string | null>(null);
   const [resourceSort, setResourceSort] = useState<ResourceSortKey>("ease");
   const [resourceRatings, setResourceRatings] = useState<Record<string, number>>({});
@@ -322,6 +326,7 @@ export default function Home() {
     () =>
       knowledge
         .filter((item) => roadmapCategory === "全部" || item.category === roadmapCategory)
+        .filter((item) => roadmapVerdict === "全部" || item.verdict === roadmapVerdict)
         .map((item) => ({
           ...item,
           adjustedDays: Math.max(3, Math.round(item.days * level.multiplier)),
@@ -333,7 +338,7 @@ export default function Home() {
               : a[roadmapSort] - b[roadmapSort];
           return roadmapSortDirection === "desc" ? -delta : delta;
         }),
-    [level.multiplier, roadmapCategory, roadmapSort, roadmapSortDirection],
+    [level.multiplier, roadmapCategory, roadmapSort, roadmapSortDirection, roadmapVerdict],
   );
 
   const filteredJobs = useMemo(() => {
@@ -394,12 +399,11 @@ export default function Home() {
     ) as typeof sum;
   }, [validAttempts]);
 
-  const weakestDimension = (
-    [
+  const weakestDimension = ([
       ["structure", "结构", averages.structure],
       ["evidence", "证据", averages.evidence],
       ["depth", "深度", averages.depth],
-    ] as const
+    ] as ["structure" | "evidence" | "depth", string, number][]
   ).sort((a, b) => a[2] - b[2])[0];
 
   const dueFlashcards = useMemo(() => {
@@ -1154,8 +1158,25 @@ export default function Home() {
                     {[...new Set(knowledge.map((item) => item.category))].map((item) => <option key={item}>{item}</option>)}
                   </select>
                 </label>
+                <label>
+                  2026-09 判断
+                  <select value={roadmapVerdict} onChange={(event) => setRoadmapVerdict(event.target.value as "全部" | LearningVerdict)}>
+                    <option>全部</option>
+                    <option>核心投入</option>
+                    <option>继续学习</option>
+                    <option>按岗位选学</option>
+                  </select>
+                </label>
                 <span className="toolbar-stat">{learningPlan.length} 项计划中 · {completedKnowledge} 项已入门</span>
               </div>
+            </div>
+
+            <div className="learning-audit">
+              <strong>本轮调研结论</strong>
+              <span>{knowledge.filter((item) => item.verdict === "核心投入").length} 项核心投入</span>
+              <span>{knowledge.filter((item) => item.verdict === "继续学习").length} 项保留 20/80</span>
+              <span>{knowledge.filter((item) => item.verdict === "按岗位选学").length} 项按岗位选学</span>
+              <p>不建议单独投入：{deprioritizedTopics.map((item) => item.topic).join("、")}。点开知识块查看判断依据与原始来源。</p>
             </div>
 
             <div className="roadmap-layout">
@@ -1164,6 +1185,7 @@ export default function Home() {
                   <thead className="roadmap-table-head">
                     <tr>
                       <th>知识大块</th>
+                      <th>最新判断</th>
                       <th>阶段</th>
                       <th>
                         <button onClick={() => toggleRoadmapSort("importance")}>
@@ -1195,6 +1217,7 @@ export default function Home() {
                           <strong>{item.name}</strong>
                           <small>{item.category} · {item.outcome}</small>
                         </td>
+                        <td><span className={`verdict-tag verdict-${item.verdict}`}>{item.verdict}</span></td>
                         <td>{item.phase}</td>
                         <td><span className="score-dots">{item.importance}/5</span></td>
                         <td><span className="score-dots">{item.difficulty}/5</span></td>
@@ -1225,6 +1248,15 @@ export default function Home() {
                   <small>{selectedKnowledge.category} · {selectedKnowledge.phase}</small>
                   <h2>{selectedKnowledge.name}</h2>
                   <p>{selectedKnowledge.why}</p>
+                  <div className="validation-copy">
+                    <span className={`verdict-tag verdict-${selectedKnowledge.verdict}`}>{selectedKnowledge.verdict}</span>
+                    <p>{selectedKnowledge.validation}</p>
+                    <div className="signal-links">
+                      {selectedKnowledge.signals.map((signal) => (
+                        <a key={signal.url} href={signal.url} target="_blank" rel="noreferrer">{signal.label} ↗</a>
+                      ))}
+                    </div>
+                  </div>
                   <section className="drawer-progress">
                     <span>我的位置</span>
                     <div>

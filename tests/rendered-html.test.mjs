@@ -129,8 +129,8 @@ test("v4 includes the task-first roadmap, evidence, interview and practice syste
   );
   assert.equal(
     flashcardBlock.match(/^\s+\["(?:低|中|高)"/gm)?.length,
-    84,
-    "14 knowledge modules should each contain 6 flashcards",
+    90,
+    "15 knowledge modules should each contain 6 flashcards",
   );
 });
 

@@ -564,6 +564,34 @@ textarea {
 }
 
 /* Roadmap */
+.learning-audit {
+  align-items: baseline;
+  border-bottom: 1px solid var(--line);
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-bottom: 14px;
+  padding: 12px 0;
+}
+
+.learning-audit strong {
+  font-size: 13px;
+}
+
+.learning-audit span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.learning-audit p {
+  color: var(--muted);
+  flex-basis: 100%;
+  font-size: 12px;
+  line-height: 1.55;
+  margin: 0;
+}
+
 .roadmap-layout {
   display: grid;
   gap: 16px;
@@ -581,7 +609,7 @@ textarea {
 
 .roadmap-table {
   border-collapse: collapse;
-  min-width: 990px;
+  min-width: 1100px;
   width: 100%;
 }
 
@@ -661,6 +689,55 @@ textarea {
   display: inline-block;
   font-size: 11px;
   padding: 5px 8px;
+}
+
+.verdict-tag {
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 650;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+[class*="verdict-核心投入"] {
+  background: #e9f8f0;
+  color: #087443;
+}
+
+[class*="verdict-继续学习"] {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+[class*="verdict-按岗位选学"] {
+  background: #fff3df;
+  color: #9b5a00;
+}
+
+.validation-copy {
+  border-bottom: 1px solid var(--line);
+  border-top: 1px solid var(--line);
+  margin: 18px 0;
+  padding: 14px 0;
+}
+
+.validation-copy p {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.65;
+  margin: 10px 0;
+}
+
+.signal-links {
+  display: grid;
+  gap: 6px;
+}
+
+.signal-links a {
+  color: var(--blue);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .progress-0 {

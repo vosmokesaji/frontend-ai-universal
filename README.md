@@ -1,98 +1,93 @@
-# vinext-starter
+# Frontend → AI 转型工作台
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+一个给前端开发者使用的 AI 学习、岗位研究、面试训练和刻意练习工作台。它不按“最近什么最火”排课，而是把真实招聘 JD、面经和行业研究映射成能力，再持续校准哪些内容值得长期投入。
 
-## Prerequisites
+本轮内容校准时间：**2026-09-06**。
 
-- Node.js `>=22.13.0`
+## 为什么做这个项目
 
-## Quick Start
+模型和框架会快速变化，但问题拆解、工程基础、数据与检索、评测、可靠性、安全、交互判断这些能力不会按月过期。项目把“追模型新闻”换成一条更可验证的链路：
+
+```text
+官方 JD + 面经来源 + 行业研究
+          ↓
+    提取高频能力信号
+          ↓
+学习路线 → 面试题 → 闪卡 / 脑图 / 专项任务
+```
+
+## 当前结论
+
+- 核心投入：AI 协作开发、Python、上下文工程、RAG 数据链路、Agent / Workflow、评测、AI UI / UX、后端可靠性、安全、LLMOps。
+- 保留 20/80：机器学习与统计直觉、LLM / Transformer 原理。
+- 按岗位选学：微调与开源模型、Next.js 等特定全栈框架。
+- 降低优先级：提示词魔法句式、背框架 API、朴素 RAG Demo、多 Agent 炫技、把 Next.js 当 AI 前置课、每日追模型榜单。
+
+完整判断、证据与团队分享稿见 [docs/前端团队AI学习分享_2026年9月.md](docs/前端团队AI学习分享_2026年9月.md)。
+
+## 功能
+
+- 学习路线：表头排序、最新判断筛选、入门 / 进阶 / 精通边界、每块 3 条中文 + 3 条英文资源。
+- 岗位机会：精确职位详情和官方招聘检索任务分层展示，保留职位 ID、抓取日期和原始链接。
+- 面试训练：50 组来源聚合、题目热度、语音 / 文本回答、模型评分、本地兜底、回答快照与进步曲线。
+- 刻意练习：按知识块生成闪卡、键盘操作、脑图、专项任务与反馈。
+- 本地优先：学习进度和练习历史保存在浏览器 LocalStorage；DeepSeek Key 只在服务端读取。
+
+## 证据口径
+
+项目把证据分为三层，避免把“搜索入口”包装成真实职位：
+
+1. **精确 JD**：能定位到招聘官网的具体职位详情，记录职位 ID、发布时间、抓取日期和状态。
+2. **官方招聘检索**：只表示“去该公司官网按关键词核验”的搜索任务，不代表存在独立在招职位。
+3. **面经来源**：记录 50 个可回到原文的链接；题目频次表示覆盖该主题的来源数，不等于某题逐字出现次数。
+
+薪资区间是北京同类岗位的观察值。招聘官网没有公开薪资时，页面会明确写“官网未公开”，不推测具体 offer。
+
+## 本地运行
+
+要求 Node.js `>=22.13.0`。
 
 ```bash
 npm install
+cp .env.example .env.local
 npm run dev
-npm run build
 ```
 
-This starter does not use `wrangler.jsonc`.
+打开终端输出中的本地地址。没有配置 DeepSeek Key 时，面试评分会使用本地结构化规则兜底。
 
-## Included Shape
+## 环境变量
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```bash
+DEEPSEEK_API_KEY=your_key_here
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-flash
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+不要把真实 Key 写进代码、截图、Issue 或提交历史。`.env.local` 已被 Git 忽略。
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+## 验证
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
+```bash
+npm run lint
+npm test
+```
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
+## 项目结构
 
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
+```text
+app/content.tsx       学习模块与基础题目
+app/data-v3.ts        学习资源、分层知识、闪卡与专项任务
+app/research-v4.ts    可溯源 JD、招聘雷达、50 组面经及频次映射
+app/page.tsx          工作台交互
+app/api/              服务端面试与练习评分
+docs/                 分享稿与调研说明
+tests/                构建产物校验
+```
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
+## 贡献
 
-## Useful Commands
+欢迎提交新的官方 JD、面经原文、失效链接修复和更好的练习题。请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，任何数据更新都要附原始链接与核验日期。
 
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
+## 许可
 
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+代码采用 [MIT License](LICENSE)。招聘信息、文章、课程和面经内容归各自权利人所有；本项目仅保留标题、摘要、标签和来源链接。

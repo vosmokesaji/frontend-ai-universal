@@ -19,9 +19,19 @@ export type KnowledgeLevel = {
   items: string[];
 };
 
+export type LearningVerdict = "核心投入" | "继续学习" | "按岗位选学";
+
+export type EvidenceSignal = {
+  label: string;
+  url: string;
+};
+
 export type KnowledgeV3 = Omit<Knowledge, "resources"> & {
   resources: LearningResource[];
   levels: KnowledgeLevel[];
+  verdict: LearningVerdict;
+  validation: string;
+  signals: EvidenceSignal[];
 };
 
 type ChineseResource = Omit<LearningResource, "lang">;
@@ -140,6 +150,35 @@ const chineseResources: Record<string, ChineseResource[]> = {
       note: "适合按任务查阅的工程案例库，覆盖上下文、工具与评测。",
       ease: 4.2,
       professional: 4.8,
+      audience: "进阶",
+    },
+  ],
+  "ai-coding": [
+    {
+      title: "GitHub Copilot 中文文档",
+      provider: "GitHub",
+      url: "https://docs.github.com/zh/copilot",
+      note: "从仓库上下文、指令到审查与测试，建立可复用的人机协作流程。",
+      ease: 4.6,
+      professional: 4.9,
+      audience: "入门到进阶",
+    },
+    {
+      title: "AI Skills for Everyone",
+      provider: "Datawhale",
+      url: "https://github.com/datawhalechina/ai-skills-for-everyone",
+      note: "用中文案例练习任务描述、上下文组织、工具调用与结果验证。",
+      ease: 4.8,
+      professional: 4.5,
+      audience: "入门",
+    },
+    {
+      title: "AI 学习路线 3.0",
+      provider: "Datawhale",
+      url: "https://github.com/datawhalechina/datawhale-ai-learning-roadmap/blob/main/curriculum-v3.0.md",
+      note: "从工程实践视角理解 AI 辅助开发与应用构建的能力边界。",
+      ease: 4.3,
+      professional: 4.6,
       audience: "进阶",
     },
   ],
@@ -459,6 +498,11 @@ const levelBlueprints: Record<
     advanced: ["上下文选择与压缩", "Prompt 版本与回归", "模型路由与缓存", "防注入与边界测试"],
     mastery: ["复杂任务分解", "自动提示优化", "跨模型迁移", "领域评测驱动的上下文工程"],
   },
+  "ai-coding": {
+    entry: ["把需求写成验收标准", "让 Agent 先读代码再计划", "小步提交与 diff 审查", "单元 / 集成测试"],
+    advanced: ["仓库级指令与上下文", "任务拆分与并行边界", "失败复现和回滚", "安全权限与沙箱"],
+    mastery: ["Agent harness 设计", "自动评测与回归门禁", "多 Agent 协作治理", "团队工作流与效能度量"],
+  },
   rag: {
     entry: ["文档解析与切分", "embedding 与向量库", "Top-K 检索", "引用答案"],
     advanced: ["混合检索与重排", "查询改写", "元数据过滤", "分层评测与增量索引"],
@@ -538,6 +582,141 @@ function levelFor(id: string): KnowledgeLevel[] {
 const easeDefaults = [4.8, 4.4, 3.8];
 const professionalDefaults = [4.2, 4.7, 4.9];
 
+const learningDecisions: Record<
+  string,
+  { verdict: LearningVerdict; validation: string; signals: EvidenceSignal[] }
+> = {
+  ml: {
+    verdict: "继续学习",
+    validation: "保留统计、指标、实验设计和误差分析这 20% 高频基础；应用岗位不必先学完整训练理论。",
+    signals: [
+      { label: "百度 J102217：训练、评测与应用并重", url: "https://talent.baidu.com/jobs/detail/SOCIAL/f16d38a1-440b-4e7b-b09b-ddfdfaf643e4" },
+      { label: "腾讯 / 百度大模型面经", url: "https://www.nowcoder.com/discuss/878600528970735616" },
+    ],
+  },
+  python: {
+    verdict: "核心投入",
+    validation: "Python 仍是模型、数据、评测和服务生态的共同语言；前端转型至少要能写可测试的异步 API。",
+    signals: [
+      { label: "百度 J100679：Python、API、RAG、Agent", url: "https://talent.baidu.com/jobs/detail/GRADUATE/66a12645-f0f1-435c-8426-9fb91f1be330" },
+      { label: "2026 面经：Python 与工程基础高频", url: "https://www.nowcoder.com/discuss/878600528970735616" },
+    ],
+  },
+  llm: {
+    verdict: "继续学习",
+    validation: "理解 token、上下文、采样、KV Cache 与能力边界即可支撑大多数应用决策，不必先从头训练模型。",
+    signals: [
+      { label: "Stanford AI Index 2026", url: "https://hai.stanford.edu/assets/files/ai_index_report_2026.pdf" },
+      { label: "百度 J102217：模型训练、评测与应用", url: "https://talent.baidu.com/jobs/detail/SOCIAL/f16d38a1-440b-4e7b-b09b-ddfdfaf643e4" },
+    ],
+  },
+  prompt: {
+    verdict: "核心投入",
+    validation: "提示词技巧正在升级为上下文工程：管理系统指令、工具、数据、历史、预算和结构化输出。",
+    signals: [
+      { label: "Anthropic：Context Engineering", url: "https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents" },
+      { label: "百度 J100679：模型 API 与工具链", url: "https://talent.baidu.com/jobs/detail/GRADUATE/66a12645-f0f1-435c-8426-9fb91f1be330" },
+    ],
+  },
+  "ai-coding": {
+    verdict: "核心投入",
+    validation: "AI 写代码能力提升后，人的重心转向规格、拆解、上下文、审查、测试和责任边界，这会成为开发基本功。",
+    signals: [
+      { label: "OpenAI：Agent 任务时长正在拉长", url: "https://openai.com/index/how-agents-are-transforming-work/" },
+      { label: "GitHub：开发者转向理解、指导与验证", url: "https://github.blog/news-insights/octoverse/the-new-identity-of-a-developer-what-changes-and-what-doesnt-in-the-ai-era/" },
+    ],
+  },
+  rag: {
+    verdict: "核心投入",
+    validation: "值得学的是数据接入、权限、混合检索、重排、引用和评测；只会切块、向量化、Top-K 已不够。",
+    signals: [
+      { label: "百度 J100679：RAG 与数据管道", url: "https://talent.baidu.com/jobs/detail/GRADUATE/66a12645-f0f1-435c-8426-9fb91f1be330" },
+      { label: "2026 面经：RAG 质量与评测", url: "https://www.nowcoder.com/discuss/914178628659707904" },
+    ],
+  },
+  agent: {
+    verdict: "核心投入",
+    validation: "Agent 已从演示进入 API、CLI、Skill 和业务流程；重点是工具契约、状态、恢复、权限与评测。",
+    signals: [
+      { label: "百度 J103341：Agent-friendly 工具链", url: "https://talent.baidu.com/jobs/detail/SOCIAL/a5ff8d15-b547-4a87-ba55-a128dae953cd" },
+      { label: "Anthropic：先选最简单的有效 Agent 架构", url: "https://www.anthropic.com/engineering/building-effective-agents" },
+    ],
+  },
+  eval: {
+    verdict: "核心投入",
+    validation: "模型迭代越快，越需要固定任务集、grader、trace 和回归门禁；否则无法判断升级是否真的更好。",
+    signals: [
+      { label: "Anthropic：Agent 评测方法", url: "https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents" },
+      { label: "百度 J101017：Agent 评测体系", url: "https://talent.baidu.com/jobs/detail/GRADUATE/02f73086-be71-4d09-8d6e-f1c6981b8b48" },
+    ],
+  },
+  "ai-ui": {
+    verdict: "核心投入",
+    validation: "简单页面生成会更便宜，但流式、多模态、长任务状态、可视化与性能仍需要高级前端工程。",
+    signals: [
+      { label: "Anthropic：JS/HTML 与 UI/UX 居前", url: "https://www.anthropic.com/research/impact-software-development" },
+      { label: "GitHub Octoverse 2025：TypeScript 使用上升", url: "https://github.blog/news-insights/octoverse/octoverse-a-new-developer-joins-github-every-second-as-ai-leads-typescript-to-1/" },
+    ],
+  },
+  "ai-ux": {
+    verdict: "核心投入",
+    validation: "AI 系统不确定、会等待、会调用工具；预期管理、可撤销、证据与用户控制直接决定产品是否可信。",
+    signals: [
+      { label: "OpenAI：判断、品味与责任更重要", url: "https://openai.com/index/built-to-benefit-everyone-our-plan/" },
+      { label: "Anthropic：UI/UX 是 Coding Agent 高频任务", url: "https://www.anthropic.com/research/impact-software-development" },
+    ],
+  },
+  backend: {
+    verdict: "核心投入",
+    validation: "长任务 Agent 把超时、队列、幂等、检查点、回滚和容量成本推到台前，后端可靠性是落地门槛。",
+    signals: [
+      { label: "百度 J100679：推理服务、Docker/K8s 与稳定性", url: "https://talent.baidu.com/jobs/detail/GRADUATE/66a12645-f0f1-435c-8426-9fb91f1be330" },
+      { label: "2026 Agent 面经：生产问题与系统设计", url: "https://www.nowcoder.com/discuss/916347378695692288" },
+    ],
+  },
+  security: {
+    verdict: "核心投入",
+    validation: "模型拥有工具和写权限后，Prompt 注入会变成真实动作风险；最小权限、确认、审计与回滚必须前置。",
+    signals: [
+      { label: "OWASP Agentic Top 10 2026", url: "https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/" },
+      { label: "MCP 2025-11 授权规范", url: "https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization" },
+    ],
+  },
+  llmops: {
+    verdict: "核心投入",
+    validation: "多模型、快速版本与长链路要求完整版本、trace、灰度、回滚和成本归因，不能只看 QPS。",
+    signals: [
+      { label: "Anthropic：Agent trace 与 grader", url: "https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents" },
+      { label: "百度 J100679：速度与稳定性优化", url: "https://talent.baidu.com/jobs/detail/GRADUATE/66a12645-f0f1-435c-8426-9fb91f1be330" },
+    ],
+  },
+  finetune: {
+    verdict: "按岗位选学",
+    validation: "算法、模型平台和私有化岗位需要；多数应用岗应先证明 Prompt、RAG 与评测基线仍无法达标。",
+    signals: [
+      { label: "百度 J102217：模型训练与应用算法岗", url: "https://talent.baidu.com/jobs/detail/SOCIAL/f16d38a1-440b-4e7b-b09b-ddfdfaf643e4" },
+      { label: "2026 Agent 面经：应用、平台、算法分层", url: "https://www.nowcoder.com/discuss/916347378695692288" },
+    ],
+  },
+  next: {
+    verdict: "按岗位选学",
+    validation: "现代全栈边界值得学，但 Next.js 只是实现选项，不是转 AI 的门票；按团队栈和目标岗位投入。",
+    signals: [
+      { label: "GitHub Octoverse 2025：TypeScript 位居首位", url: "https://github.blog/news-insights/octoverse/octoverse-a-new-developer-joins-github-every-second-as-ai-leads-typescript-to-1/" },
+      { label: "百度 J97670：工程基础与 AI Coding 工具", url: "https://talent.baidu.com/jobs/detail/INTERN/d1ed3134-5bd8-4743-a937-acca2773b1e7" },
+    ],
+  },
+};
+
+export const deprioritizedTopics = [
+  { topic: "提示词魔法句式", reason: "技巧随模型变化，改学上下文、结构化输出与评测。" },
+  { topic: "背框架 API", reason: "LangChain、LangGraph 与各家 SDK 更新快，改学状态、工具、恢复等原理。" },
+  { topic: "朴素 RAG Demo", reason: "只会切块、向量化、Top-K 无法证明生产价值，补齐数据与评测闭环。" },
+  { topic: "多 Agent 炫技", reason: "协调成本和失败面更大，先用可控 Workflow 或单 Agent。" },
+  { topic: "把 Next.js 当 AI 前置课", reason: "按岗位和团队栈选学，不应挤占 Python、评测与可靠性时间。" },
+  { topic: "每日追模型榜单", reason: "关注能力拐点与实测基线，避免把资讯消费当学习。" },
+];
+
 const englishFallbacks: Record<string, Resource[]> = {
   python: [
     {
@@ -568,6 +747,7 @@ const englishFallbacks: Record<string, Resource[]> = {
 
 export const knowledge: KnowledgeV3[] = baseKnowledge.map((item) => ({
   ...item,
+  ...learningDecisions[item.id],
   levels: levelFor(item.id),
   resources: [
     ...[
@@ -1082,6 +1262,14 @@ const flashcardBlueprints: Record<string, CardSeed[]> = {
     ["高", "如何避免 Prompt 改动造成静默回归？", "版本化模板，用固定数据集做离线回归并记录模型、参数和指标。", "可重复评测"],
     ["高", "什么时候应拆成多步 Prompt？", "任务包含可独立验证的中间结果，或单步指令冲突、上下文过载时。", "可验证的分解"],
   ],
+  "ai-coding": [
+    ["低", "把任务交给 Coding Agent 前先写什么？", "写清目标、非目标、约束、验收标准和可运行的验证命令。", "规格就是接口"],
+    ["低", "为什么要让 Agent 先读代码再给计划？", "仓库结构、约定和既有实现决定改动边界，先读能减少重复与误改。", "先建立仓库模型"],
+    ["中", "怎样审查 AI 生成的代码？", "看 diff、运行测试、检查边界与安全，再验证真实用户路径，而不是只看能否编译。", "验证结果而非语气"],
+    ["中", "为什么要控制单次任务规模？", "小任务更容易给足上下文、定位失败、审查差异和安全回滚。", "缩短反馈回路"],
+    ["高", "仓库级 Agent 指令应包含什么？", "架构约束、代码风格、测试命令、禁区、依赖策略和完成定义。", "把隐性规则显性化"],
+    ["高", "如何衡量 Coding Agent 真正提高了效率？", "比较端到端交付时间、返工、缺陷、审查负担和任务完成率，而非生成代码行数。", "优化系统吞吐"],
+  ],
   rag: [
     ["低", "RAG 的核心价值是什么？", "让模型使用可更新、可引用、受权限控制的外部知识。", "参数外知识"],
     ["低", "为什么切分时要保留元数据？", "来源、标题、时间、权限和层级用于过滤、引用与结果解释。", "片段不能失去身份"],
@@ -1183,6 +1371,7 @@ export const knowledgeGraph = {
     { id: "python", label: "Python", group: "工程", x: 57, y: 15, description: "进入 AI 服务生态的工程语言。" },
     { id: "next", label: "现代全栈", group: "前端", x: 82, y: 15, description: "补齐 Server Components 与服务端渲染。" },
     { id: "prompt", label: "上下文工程", group: "应用", x: 16, y: 38, description: "组织指令、示例与动态上下文。" },
+    { id: "ai-coding", label: "AI 协作开发", group: "工程", x: 28, y: 50, description: "用规格、审查与测试驾驭 Coding Agent。" },
     { id: "rag", label: "RAG", group: "应用", x: 39, y: 38, description: "连接可更新、可引用的外部知识。" },
     { id: "ai-ui", label: "AI UI", group: "前端", x: 64, y: 38, description: "流式、多模态与生成式界面。" },
     { id: "ai-ux", label: "AI UX", group: "设计", x: 88, y: 38, description: "校准信任并保留用户控制。" },
@@ -1196,7 +1385,7 @@ export const knowledgeGraph = {
   ],
   edges: [
     ["ml", "eval"], ["llm", "prompt"], ["llm", "rag"], ["python", "rag"],
-    ["python", "backend"], ["next", "ai-ui"], ["prompt", "agent"], ["prompt", "ai-ui"],
+    ["python", "backend"], ["prompt", "ai-coding"], ["ai-coding", "ai-ui"], ["ai-coding", "backend"], ["prompt", "agent"], ["prompt", "ai-ui"],
     ["rag", "agent"], ["rag", "eval"], ["ai-ui", "ai-ux"], ["ai-ui", "agent"],
     ["agent", "backend"], ["agent", "security"], ["backend", "llmops"],
     ["eval", "llmops"], ["finetune", "llmops"], ["security", "product"],
@@ -1219,6 +1408,7 @@ export const practices: PracticeDrill[] = [
   { id: "python", tag: "Python 异步", difficulty: "进阶", minutes: 40, task: "实现一个并发调用两个模型、支持超时取消的 FastAPI 接口。", deliverable: "可运行接口 + 3 个测试", criteria: ["没有阻塞事件循环", "区分连接与总超时", "覆盖失败和取消"] },
   { id: "llm", tag: "LLM 原理", difficulty: "入门", minutes: 25, task: "不用公式，向前端同事讲清 token、attention、上下文窗口与成本的关系。", deliverable: "5 分钟讲解录音或提纲", criteria: ["Q/K/V 直觉正确", "连接到延迟和成本", "给出一个应用取舍"] },
   { id: "prompt", tag: "上下文工程", difficulty: "进阶", minutes: 35, task: "把一个自由文本 Prompt 改造成有输入契约、示例、JSON 输出与失败策略的版本。", deliverable: "前后版本 + 10 条测试集", criteria: ["定义成功标准", "输出可验证", "记录至少 2 个失败样本"] },
+  { id: "ai-coding", tag: "AI 协作开发", difficulty: "进阶", minutes: 40, task: "把一个模糊需求改写成 Coding Agent 可执行的任务包，并完成一次 diff 审查。", deliverable: "任务规格 + 实施计划 + 审查记录", criteria: ["目标、非目标和验收标准明确", "包含可运行验证命令", "指出至少 2 个潜在风险"] },
   { id: "rag", tag: "RAG", difficulty: "挑战", minutes: 45, task: "白板讲清解析、切分、混合召回、重排、引用和分层评测，限时 8 分钟。", deliverable: "一张链路图 + 讲解录音", criteria: ["每层都有输入输出", "区分检索与生成指标", "包含权限和更新策略"] },
   { id: "agent", tag: "Agent 工作流", difficulty: "挑战", minutes: 45, task: "为一个可写数据库的 Agent 设计超时、幂等、检查点、补偿和人工确认。", deliverable: "状态图 + 失败处理表", criteria: ["列出终止条件", "写操作可幂等", "不可逆动作先确认"] },
   { id: "eval", tag: "评测", difficulty: "进阶", minutes: 40, task: "为作品集项目写 20 条黄金样本，并定义质量、延迟、成本三类门槛。", deliverable: "评测表 + 发布门禁", criteria: ["覆盖主流程与边界", "有当前基线", "失败能归因到层"] },
