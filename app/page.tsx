@@ -25,6 +25,7 @@ type ResourceSortKey = "ease" | "professional";
 type JobSortKey = "match" | "captured";
 type InterviewMode = "practice" | "formal";
 type PracticeMode = "flashcards" | "graph" | "drills";
+type SiteTheme = "stealth" | "career";
 type ApplicationStatus = "收藏" | "已投递" | "面试中" | "暂不合适";
 type FlashcardRating = "again" | "hard" | "good" | "easy";
 
@@ -73,13 +74,43 @@ type DrillAttempt = {
   review: DrillReview;
 };
 
-const tabs: { id: TabId; label: string; icon: string; short: string }[] = [
-  { id: "home", label: "转型工作台", icon: "⌂", short: "总览" },
-  { id: "roadmap", label: "学习路线", icon: "▤", short: "路线" },
-  { id: "roles", label: "岗位机会", icon: "⌁", short: "岗位" },
-  { id: "interview", label: "面试训练", icon: "▣", short: "面试" },
-  { id: "practice", label: "刻意练习", icon: "☆", short: "练习" },
+const tabs: {
+  id: TabId;
+  label: string;
+  stealthLabel: string;
+  icon: string;
+  short: string;
+  stealthShort: string;
+}[] = [
+  { id: "home", label: "转型工作台", stealthLabel: "Workspace", icon: "⌂", short: "总览", stealthShort: "Home" },
+  { id: "roadmap", label: "学习路线", stealthLabel: "Knowledge", icon: "▤", short: "路线", stealthShort: "Notes" },
+  { id: "roles", label: "岗位机会", stealthLabel: "Market Watch", icon: "⌁", short: "岗位", stealthShort: "Signals" },
+  { id: "interview", label: "面试训练", stealthLabel: "Review Lab", icon: "▣", short: "面试", stealthShort: "Review" },
+  { id: "practice", label: "刻意练习", stealthLabel: "Practice", icon: "☆", short: "练习", stealthShort: "Practice" },
 ];
+
+const moduleCopy: Record<TabId, { stealth: { title: string; description: string }; career: { title: string; description: string } }> = {
+  home: {
+    stealth: { title: "Workspace", description: "Current status, next action and recent activity." },
+    career: { title: "转型工作台", description: "只展示当前状态、下一步和需要处理的事项。" },
+  },
+  roadmap: {
+    stealth: { title: "Knowledge Index", description: "Sort, inspect and maintain your working knowledge." },
+    career: { title: "学习路线", description: "表头排序；点开知识大块查看 20/80 内容、资源和个人进度。" },
+  },
+  roles: {
+    stealth: { title: "Market Watch", description: "Verified signals and source links for ongoing research." },
+    career: { title: "岗位机会", description: "精确 JD 与官方招聘检索分开呈现；不把检索入口伪装成独立职位。" },
+  },
+  interview: {
+    stealth: { title: "Review Lab", description: "Practice, record feedback and compare repeated attempts." },
+    career: { title: "面试训练", description: "练习模式可看提示与参考答案；正式模拟连续 5 题并隐藏答案。" },
+  },
+  practice: {
+    stealth: { title: "Practice", description: "Flashcards, dependency maps and focused exercises." },
+    career: { title: "刻意练习", description: "闪卡做间隔重复；脑图定位先修关系；专项任务提交真实产物并保留评审历史。" },
+  },
+};
 
 const experienceLevels: {
   id: ExperienceId;
@@ -238,6 +269,8 @@ function Segmented<T extends string>({
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<TabId>("home");
+  const [siteTheme, setSiteTheme] = useState<SiteTheme>("stealth");
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [experience, setExperience] = useState<ExperienceId>("growing");
   const [targetRole, setTargetRole] = useState(rolePaths[0].id);
   const [globalSearch, setGlobalSearch] = useState("");
@@ -314,7 +347,23 @@ export default function Home() {
     setAnswerHistory(safeRead("frontend-ai-interview-history-v2", []));
     setFlashcardSchedule(safeRead("frontend-ai-flashcard-schedule-v4", {}));
     setDrillAttempts(safeRead("frontend-ai-drill-history-v4", []));
+    const storedTheme = safeRead<SiteTheme>("frontend-ai-theme-v1", "stealth");
+    setSiteTheme(storedTheme === "career" ? "career" : "stealth");
   }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.siteTheme = siteTheme;
+    document.title = siteTheme === "stealth" ? "Atlas Workspace" : "Frontend to AI｜前端开发者 AI 转型指南";
+  }, [siteTheme]);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSettingsOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [settingsOpen]);
 
   useEffect(() => {
     if (activeTab !== "interview" || review) return;
@@ -439,6 +488,7 @@ export default function Home() {
       100,
   );
   const activePage = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
+  const activeModuleCopy = moduleCopy[activeTab][siteTheme];
   const dashboardSteps = [
     ...learningPlan
       .map((id) => knowledge.find((item) => item.id === id))
@@ -479,6 +529,11 @@ export default function Home() {
     );
     window.scrollTo({ top: 0, behavior: "smooth" });
     setGlobalSearch("");
+  }
+
+  function chooseSiteTheme(theme: SiteTheme) {
+    setSiteTheme(theme);
+    saveLocal("frontend-ai-theme-v1", theme);
   }
 
   function chooseExperience(value: ExperienceId) {
@@ -938,10 +993,10 @@ export default function Home() {
     .filter(Boolean);
 
   return (
-    <div className="app">
+    <div className={`app theme-${siteTheme}`}>
       <aside className="global-nav">
         <button className="wordmark" onClick={() => switchTab("home")} aria-label="打开工作台">
-          <span>F</span>
+          <span>{siteTheme === "stealth" ? "A" : "F"}</span>
         </button>
         <nav className="tab-bar" role="tablist" aria-label="网站模块">
           {tabs.map((tab) => (
@@ -951,23 +1006,64 @@ export default function Home() {
               aria-selected={activeTab === tab.id}
               className={activeTab === tab.id ? "active" : ""}
               onClick={() => switchTab(tab.id)}
-              title={tab.label}
+              title={siteTheme === "stealth" ? tab.stealthLabel : tab.label}
             >
               <span aria-hidden="true">{tab.icon}</span>
-              <em>{tab.short}</em>
+              <em>{siteTheme === "stealth" ? tab.stealthShort : tab.short}</em>
             </button>
           ))}
         </nav>
-        <button className="rail-settings" aria-label="设置" title="设置">
+        <button
+          className={`rail-settings ${settingsOpen ? "active" : ""}`}
+          aria-label="显示设置"
+          aria-expanded={settingsOpen}
+          title="Display settings"
+          onClick={() => setSettingsOpen((value) => !value)}
+        >
           <span aria-hidden="true">⚙</span>
-          <em>设置</em>
+          <em>Settings</em>
         </button>
       </aside>
 
+      {settingsOpen && (
+        <>
+          <button className="settings-backdrop" aria-label="关闭显示设置" onClick={() => setSettingsOpen(false)} />
+          <aside className="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="display-settings-title">
+            <div className="settings-heading">
+              <div><small>DISPLAY</small><h2 id="display-settings-title">显示设置</h2></div>
+              <button onClick={() => setSettingsOpen(false)} aria-label="关闭">×</button>
+            </div>
+            <p>主题只影响界面呈现，不会改变学习进度、收藏和回答历史。</p>
+            <div className="theme-options" role="radiogroup" aria-label="网站主题">
+              <button
+                className={siteTheme === "stealth" ? "selected" : ""}
+                role="radio"
+                aria-checked={siteTheme === "stealth"}
+                onClick={() => chooseSiteTheme("stealth")}
+              >
+                <span className="theme-preview stealth-preview"><i /><i /><i /></span>
+                <span><strong>摸鱼主题</strong><small>默认 · 英文导航、紧凑页头、中性工作台外观</small></span>
+                <b>{siteTheme === "stealth" ? "✓" : ""}</b>
+              </button>
+              <button
+                className={siteTheme === "career" ? "selected" : ""}
+                role="radio"
+                aria-checked={siteTheme === "career"}
+                onClick={() => chooseSiteTheme("career")}
+              >
+                <span className="theme-preview career-preview"><i /><i /><i /></span>
+                <span><strong>转型主题</strong><small>原版 · 中文导航、明确的学习和求职标题</small></span>
+                <b>{siteTheme === "career" ? "✓" : ""}</b>
+              </button>
+            </div>
+          </aside>
+        </>
+      )}
+
       <header className="dashboard-header">
         <div className="dashboard-title">
-          <span>Frontend → AI</span>
-          <h1>{activePage.label}</h1>
+          <span>{siteTheme === "stealth" ? "ATLAS / PERSONAL OPS" : "Frontend → AI"}</span>
+          <h1>{siteTheme === "stealth" ? activePage.stealthLabel : activePage.label}</h1>
         </div>
         <div className="dashboard-header-actions">
           <span className="header-progress">
@@ -979,8 +1075,8 @@ export default function Home() {
             <input
               value={globalSearch}
               onChange={(event) => setGlobalSearch(event.target.value)}
-              placeholder="搜索知识、岗位、题目"
-              aria-label="全站搜索"
+              placeholder={siteTheme === "stealth" ? "Search workspace" : "搜索知识、岗位、题目"}
+              aria-label={siteTheme === "stealth" ? "Search workspace" : "全站搜索"}
             />
             {globalResults.length > 0 && (
               <div className="search-results">
@@ -1002,8 +1098,8 @@ export default function Home() {
           <section className="module shell">
             <div className="module-toolbar">
               <div>
-                <h1>转型工作台</h1>
-                <p>只展示当前状态、下一步和需要处理的事项。</p>
+                <h1>{activeModuleCopy.title}</h1>
+                <p>{activeModuleCopy.description}</p>
               </div>
               <div className="toolbar-actions">
                 <label>
@@ -1147,8 +1243,8 @@ export default function Home() {
           <section className="module shell">
             <div className="module-toolbar">
               <div>
-                <h1>学习路线</h1>
-                <p>表头排序；点开知识大块查看 20/80 内容、资源和个人进度。</p>
+                <h1>{activeModuleCopy.title}</h1>
+                <p>{activeModuleCopy.description}</p>
               </div>
               <div className="toolbar-actions">
                 <label>
@@ -1341,8 +1437,8 @@ export default function Home() {
           <section className="module shell">
             <div className="module-toolbar">
               <div>
-                <h1>岗位机会</h1>
-                <p>精确 JD 与官方招聘检索分开呈现；不把检索入口伪装成独立职位。</p>
+                <h1>{activeModuleCopy.title}</h1>
+                <p>{activeModuleCopy.description}</p>
               </div>
               <div className="evidence-summary">
                 <span><b>{jobSignals.filter((item) => item.evidenceLevel === "精确 JD").length}</b> 精确 JD</span>
@@ -1462,8 +1558,8 @@ export default function Home() {
           <section className="module shell">
             <div className="module-toolbar">
               <div>
-                <h1>面试训练</h1>
-                <p>练习模式可看提示与参考答案；正式模拟连续 5 题并隐藏答案。</p>
+                <h1>{activeModuleCopy.title}</h1>
+                <p>{activeModuleCopy.description}</p>
               </div>
               <div className="interview-mode-actions">
                 {interviewMode === "practice" ? (
@@ -1712,8 +1808,8 @@ export default function Home() {
           <section className="module shell">
             <div className="module-toolbar">
               <div>
-                <h1>刻意练习</h1>
-                <p>闪卡做间隔重复；脑图定位先修关系；专项任务提交真实产物并保留评审历史。</p>
+                <h1>{activeModuleCopy.title}</h1>
+                <p>{activeModuleCopy.description}</p>
               </div>
               <div className="practice-stats">
                 <span><b>{dueFlashcards.length}</b> 今日待复习</span>

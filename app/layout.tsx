@@ -23,9 +23,8 @@ export async function generateMetadata(): Promise<Metadata> {
     headerStore.get("x-forwarded-proto") ??
     (host.startsWith("localhost") ? "http" : "https");
   const socialImage = `${protocol}://${host}/og-v4.png`;
-  const title = "Frontend to AI｜前端开发者 AI 转型指南";
-  const description =
-    "面向所有前端开发者的实用 AI 转型工作台：学习计划、可追溯岗位雷达、50 个独立面经来源、模型面试评分、间隔重复闪卡、知识脑图和专项任务。";
+  const title = "Atlas Workspace";
+  const description = "个人知识、研究信号、复盘记录和专项练习工作台。";
 
   return {
     title,
