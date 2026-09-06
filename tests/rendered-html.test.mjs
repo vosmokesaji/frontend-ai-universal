@@ -89,10 +89,12 @@ test("v4 includes the task-first roadmap, evidence, interview and practice syste
   assert.match(page, /frontend-ai-drill-history-v4/);
   assert.match(page, /全站搜索/);
   assert.match(page, /frontend-ai-theme-v1/);
-  assert.match(page, /type SiteTheme = "stealth" \| "career"/);
+  assert.match(page, /type SiteTheme = "stealth" \| "career" \| "ide"/);
   assert.match(page, /Market Watch/);
   assert.match(page, /摸鱼主题/);
   assert.match(page, /转型主题/);
+  assert.match(page, /IDE 主题/);
+  assert.match(page, /ide-statusbar/);
   assert.match(research, /不伪装成独立职位/);
   assert.match(research, /evidenceLevel: "精确 JD"/);
   assert.match(research, /evidenceLevel: "官方招聘检索"/);
