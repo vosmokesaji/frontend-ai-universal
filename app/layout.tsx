@@ -23,8 +23,8 @@ export async function generateMetadata(): Promise<Metadata> {
     headerStore.get("x-forwarded-proto") ??
     (host.startsWith("localhost") ? "http" : "https");
   const socialImage = `${protocol}://${host}/og-v4.png`;
-  const title = "Atlas Workspace";
-  const description = "个人知识、研究信号、复盘记录和专项练习工作台。";
+  const title = "dashboard.tsx — frontend-ai-universal";
+  const description = "Frontend AI knowledge workspace.";
 
   return {
     title,

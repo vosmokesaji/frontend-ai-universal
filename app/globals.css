@@ -5375,3 +5375,53 @@ html[data-site-theme="ide-native"] body {
     margin-top: 8px;
   }
 }
+
+/* Native interview workspace contrast fix. */
+.theme-ide-native .question-card {
+  background: #131920;
+  border-color: #34404e;
+  color: #d7e0ec;
+}
+
+.theme-ide-native .question-card h2 {
+  color: #e2e8f2;
+}
+
+.theme-ide-native .question-meta span {
+  background: rgba(120, 169, 255, 0.14);
+  border: 1px solid rgba(120, 169, 255, 0.24);
+  color: #9cc0ff;
+}
+
+.theme-ide-native .question-meta b {
+  background: rgba(115, 218, 202, 0.11);
+  border: 1px solid rgba(115, 218, 202, 0.2);
+  color: #8fe0d3;
+}
+
+.theme-ide-native .question-meta em {
+  background: #1b232e;
+  border: 1px solid #303c4b;
+  color: #a3afbf;
+}
+
+.theme-ide-native .question-purpose {
+  background: #181f29;
+  border: 1px solid #374352;
+  border-left: 3px solid #d9a655;
+  color: #c8d2df;
+}
+
+.theme-ide-native .question-purpose > strong {
+  color: #f0bf70;
+}
+
+.theme-ide-native .question-purpose p {
+  color: #bbc6d4;
+}
+
+.theme-ide-native .answer-frame span {
+  background: #1a222d;
+  border: 1px solid #303b49;
+  color: #9eabbc;
+}

@@ -25,7 +25,7 @@ type ResourceSortKey = "ease" | "professional";
 type JobSortKey = "match" | "captured";
 type InterviewMode = "practice" | "formal";
 type PracticeMode = "flashcards" | "graph" | "drills";
-type SiteTheme = "stealth" | "career" | "ide" | "ide-native";
+type SiteTheme = "career" | "ide-native";
 type ApplicationStatus = "收藏" | "已投递" | "面试中" | "暂不合适";
 type FlashcardRating = "again" | "hard" | "good" | "easy";
 
@@ -77,50 +77,38 @@ type DrillAttempt = {
 const tabs: {
   id: TabId;
   label: string;
-  stealthLabel: string;
   ideLabel: string;
   icon: string;
   short: string;
-  stealthShort: string;
   ideShort: string;
   fileName: string;
 }[] = [
-  { id: "home", label: "转型工作台", stealthLabel: "Workspace", ideLabel: "Dashboard", icon: "⌂", short: "总览", stealthShort: "Home", ideShort: "Dashboard", fileName: "dashboard.tsx" },
-  { id: "roadmap", label: "学习路线", stealthLabel: "Knowledge", ideLabel: "Knowledge Tree", icon: "▤", short: "路线", stealthShort: "Notes", ideShort: "Knowledge", fileName: "knowledge.route.ts" },
-  { id: "roles", label: "岗位机会", stealthLabel: "Market Watch", ideLabel: "Opportunity Log", icon: "⌁", short: "岗位", stealthShort: "Signals", ideShort: "Signals", fileName: "opportunities.json" },
-  { id: "interview", label: "面试训练", stealthLabel: "Review Lab", ideLabel: "Interview Console", icon: "▣", short: "面试", stealthShort: "Review", ideShort: "Console", fileName: "interview.spec.ts" },
-  { id: "practice", label: "刻意练习", stealthLabel: "Practice", ideLabel: "Practice Lab", icon: "☆", short: "练习", stealthShort: "Practice", ideShort: "Practice", fileName: "practice.md" },
+  { id: "home", label: "转型工作台", ideLabel: "Dashboard", icon: "⌂", short: "总览", ideShort: "Dashboard", fileName: "dashboard.tsx" },
+  { id: "roadmap", label: "学习路线", ideLabel: "Knowledge Tree", icon: "▤", short: "路线", ideShort: "Knowledge", fileName: "knowledge.route.ts" },
+  { id: "roles", label: "岗位机会", ideLabel: "Opportunity Log", icon: "⌁", short: "岗位", ideShort: "Signals", fileName: "opportunities.json" },
+  { id: "interview", label: "面试训练", ideLabel: "Interview Console", icon: "▣", short: "面试", ideShort: "Console", fileName: "interview.spec.ts" },
+  { id: "practice", label: "刻意练习", ideLabel: "Practice Lab", icon: "☆", short: "练习", ideShort: "Practice", fileName: "practice.md" },
 ];
 
 const moduleCopy: Record<TabId, Record<SiteTheme, { title: string; description: string }>> = {
   home: {
-    stealth: { title: "Workspace", description: "Current status, next action and recent activity." },
     career: { title: "转型工作台", description: "只展示当前状态、下一步和需要处理的事项。" },
-    ide: { title: "Dashboard", description: "Runtime overview, active queue and recent activity." },
     "ide-native": { title: "Dashboard", description: "// runtime overview · active queue · recent activity" },
   },
   roadmap: {
-    stealth: { title: "Knowledge Index", description: "Sort, inspect and maintain your working knowledge." },
     career: { title: "学习路线", description: "表头排序；点开知识大块查看 20/80 内容、资源和个人进度。" },
-    ide: { title: "Knowledge Tree", description: "Inspect nodes, dependencies, resources and current state." },
     "ide-native": { title: "Knowledge Tree", description: "// nodes · dependencies · resources · current state" },
   },
   roles: {
-    stealth: { title: "Market Watch", description: "Verified signals and source links for ongoing research." },
     career: { title: "岗位机会", description: "精确 JD 与官方招聘检索分开呈现；不把检索入口伪装成独立职位。" },
-    ide: { title: "Opportunity Log", description: "Query verified signals, snapshots and source references." },
     "ide-native": { title: "Opportunity Log", description: "// verified signals · snapshots · source references" },
   },
   interview: {
-    stealth: { title: "Review Lab", description: "Practice, record feedback and compare repeated attempts." },
     career: { title: "面试训练", description: "练习模式可看提示与参考答案；正式模拟连续 5 题并隐藏答案。" },
-    ide: { title: "Interview Console", description: "Run sessions, inspect feedback and compare revisions." },
     "ide-native": { title: "Interview Console", description: "// sessions · diagnostics · revision history" },
   },
   practice: {
-    stealth: { title: "Practice", description: "Flashcards, dependency maps and focused exercises." },
     career: { title: "刻意练习", description: "闪卡做间隔重复；脑图定位先修关系；专项任务提交真实产物并保留评审历史。" },
-    ide: { title: "Practice Lab", description: "Flashcards, dependency graph and focused tasks." },
     "ide-native": { title: "Practice Lab", description: "// flashcards · dependency graph · focused tasks" },
   },
 };
@@ -282,7 +270,7 @@ function Segmented<T extends string>({
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<TabId>("home");
-  const [siteTheme, setSiteTheme] = useState<SiteTheme>("stealth");
+  const [siteTheme, setSiteTheme] = useState<SiteTheme>("ide-native");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [ideExplorerOpen, setIdeExplorerOpen] = useState(true);
   const [idePanelOpen, setIdePanelOpen] = useState(true);
@@ -362,25 +350,17 @@ export default function Home() {
     setAnswerHistory(safeRead("frontend-ai-interview-history-v2", []));
     setFlashcardSchedule(safeRead("frontend-ai-flashcard-schedule-v4", {}));
     setDrillAttempts(safeRead("frontend-ai-drill-history-v4", []));
-    const storedTheme = safeRead<SiteTheme>("frontend-ai-theme-v1", "stealth");
-    setSiteTheme(
-      storedTheme === "career" || storedTheme === "ide" || storedTheme === "ide-native"
-        ? storedTheme
-        : "stealth",
-    );
+    const storedTheme = safeRead<string>("frontend-ai-theme-v1", "ide-native");
+    setSiteTheme(storedTheme === "career" ? "career" : "ide-native");
   }, []);
 
   useEffect(() => {
     document.documentElement.dataset.siteTheme = siteTheme;
     const page = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
     document.title =
-      siteTheme === "stealth"
-        ? "Atlas Workspace"
-        : siteTheme === "ide"
-          ? `DevSpace — ${page.ideLabel}`
-          : siteTheme === "ide-native"
-            ? `${page.fileName} — frontend-ai-universal`
-          : "Frontend to AI｜前端开发者 AI 转型指南";
+      siteTheme === "ide-native"
+        ? `${page.fileName} — frontend-ai-universal`
+        : "Frontend to AI｜前端开发者 AI 转型指南";
   }, [activeTab, siteTheme]);
 
   useEffect(() => {
@@ -516,12 +496,7 @@ export default function Home() {
   );
   const activePage = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
   const activeModuleCopy = moduleCopy[activeTab][siteTheme];
-  const activePageLabel =
-    siteTheme === "stealth"
-      ? activePage.stealthLabel
-      : siteTheme === "ide" || siteTheme === "ide-native"
-        ? activePage.ideLabel
-        : activePage.label;
+  const activePageLabel = siteTheme === "ide-native" ? activePage.ideLabel : activePage.label;
   const dashboardSteps = [
     ...learningPlan
       .map((id) => knowledge.find((item) => item.id === id))
@@ -1033,7 +1008,7 @@ export default function Home() {
           onClick={() => siteTheme === "ide-native" ? setIdeExplorerOpen((value) => !value) : switchTab("home")}
           aria-label={siteTheme === "ide-native" ? "切换资源管理器" : "打开工作台"}
         >
-          <span>{siteTheme === "stealth" ? "A" : siteTheme === "ide" || siteTheme === "ide-native" ? "</>" : "F"}</span>
+          <span>{siteTheme === "ide-native" ? "</>" : "F"}</span>
         </button>
         <nav className="tab-bar" role="tablist" aria-label="网站模块">
           {tabs.map((tab) => (
@@ -1043,10 +1018,10 @@ export default function Home() {
               aria-selected={activeTab === tab.id}
               className={activeTab === tab.id ? "active" : ""}
               onClick={() => switchTab(tab.id)}
-              title={siteTheme === "stealth" ? tab.stealthLabel : siteTheme === "ide" || siteTheme === "ide-native" ? tab.ideLabel : tab.label}
+              title={siteTheme === "ide-native" ? tab.ideLabel : tab.label}
             >
               <span aria-hidden="true">{tab.icon}</span>
-              <em>{siteTheme === "stealth" ? tab.stealthShort : siteTheme === "ide" || siteTheme === "ide-native" ? tab.ideShort : tab.short}</em>
+              <em>{siteTheme === "ide-native" ? tab.ideShort : tab.short}</em>
             </button>
           ))}
         </nav>
@@ -1073,16 +1048,6 @@ export default function Home() {
             <p>主题只影响界面呈现，不会改变学习进度、收藏和回答历史。</p>
             <div className="theme-options" role="radiogroup" aria-label="网站主题">
               <button
-                className={siteTheme === "stealth" ? "selected" : ""}
-                role="radio"
-                aria-checked={siteTheme === "stealth"}
-                onClick={() => chooseSiteTheme("stealth")}
-              >
-                <span className="theme-preview stealth-preview"><i /><i /><i /></span>
-                <span><strong>摸鱼主题</strong><small>默认 · 英文导航、紧凑页头、中性工作台外观</small></span>
-                <b>{siteTheme === "stealth" ? "✓" : ""}</b>
-              </button>
-              <button
                 className={siteTheme === "career" ? "selected" : ""}
                 role="radio"
                 aria-checked={siteTheme === "career"}
@@ -1091,16 +1056,6 @@ export default function Home() {
                 <span className="theme-preview career-preview"><i /><i /><i /></span>
                 <span><strong>转型主题</strong><small>原版 · 中文导航、明确的学习和求职标题</small></span>
                 <b>{siteTheme === "career" ? "✓" : ""}</b>
-              </button>
-              <button
-                className={siteTheme === "ide" ? "selected" : ""}
-                role="radio"
-                aria-checked={siteTheme === "ide"}
-                onClick={() => chooseSiteTheme("ide")}
-              >
-                <span className="theme-preview ide-preview"><i /><i /><i /></span>
-                <span><strong>IDE 主题</strong><small>深色 · 编辑器工作区、代码面板层级和高对比信息</small></span>
-                <b>{siteTheme === "ide" ? "✓" : ""}</b>
               </button>
               <button
                 className={siteTheme === "ide-native" ? "selected" : ""}
@@ -1145,11 +1100,8 @@ export default function Home() {
 
       <header className="dashboard-header">
         <div className="dashboard-title">
-          <span>{siteTheme === "stealth" ? "ATLAS / PERSONAL OPS" : siteTheme === "ide" ? "DEVSPACE / LOCAL" : siteTheme === "ide-native" ? "frontend-ai-universal" : "Frontend → AI"}</span>
+          <span>{siteTheme === "ide-native" ? "frontend-ai-universal" : "Frontend → AI"}</span>
           <h1>{activePageLabel}</h1>
-          {siteTheme === "ide" && (
-            <div className="ide-file-tab"><i />frontend-ai-universal <b>/</b> {activeTab}.tsx <span>×</span></div>
-          )}
         </div>
         <div className="dashboard-header-actions">
           <span className="header-progress">
@@ -1161,7 +1113,7 @@ export default function Home() {
             <input
               value={globalSearch}
               onChange={(event) => setGlobalSearch(event.target.value)}
-              placeholder={siteTheme === "stealth" ? "Search workspace" : siteTheme === "ide" || siteTheme === "ide-native" ? "Search workspace…" : "搜索知识、岗位、题目"}
+              placeholder={siteTheme === "ide-native" ? "Search workspace…" : "搜索知识、岗位、题目"}
               aria-label={siteTheme === "career" ? "全站搜索" : "Search workspace"}
             />
             {globalResults.length > 0 && (
@@ -2102,7 +2054,7 @@ export default function Home() {
           </div>
         </aside>
       )}
-      {(siteTheme === "ide" || siteTheme === "ide-native") && (
+      {siteTheme === "ide-native" && (
         <footer className="ide-statusbar" aria-label="IDE 状态栏">
           <span>⑂ main</span><span>✓ synced</span><span className="ide-status-spacer" />
           {siteTheme === "ide-native" && <button onClick={() => setIdePanelOpen((value) => !value)}>{idePanelOpen ? "Panel ↓" : "Panel ↑"}</button>}
