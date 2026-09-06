@@ -4791,3 +4791,587 @@ html[data-site-theme="ide"] body {
     display: block;
   }
 }
+
+/* IDE native theme — a structural IDE shell, not a recolor of the dashboard. */
+.ide-native-preview {
+  background: #10151c;
+  border-color: #3a4554;
+  grid-template-columns: 7px 16px 1fr;
+  grid-template-rows: 8px 1fr 5px;
+  padding: 3px;
+}
+
+.ide-native-preview i:first-child {
+  background: #181e27;
+  grid-row: 1 / 4;
+}
+
+.ide-native-preview i:nth-child(2) {
+  background: #212936;
+  grid-row: 1 / 3;
+}
+
+.ide-native-preview i:nth-child(3) {
+  background: #141a22;
+  grid-column: 3;
+  grid-row: 1 / 3;
+}
+
+.theme-ide-native {
+  background: #0f1319;
+}
+
+html[data-site-theme="ide-native"],
+html[data-site-theme="ide-native"] body {
+  background: #0f1319;
+  color-scheme: dark;
+}
+
+.theme-ide-native .global-nav {
+  background: #151a21;
+  border-right: 1px solid #2b333f;
+  bottom: 24px;
+  gap: 8px;
+  padding: 38px 4px 8px;
+  width: 48px;
+}
+
+.theme-ide-native .wordmark {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: #a9b7ca;
+  font-size: 9px;
+  height: 42px;
+  width: 40px;
+}
+
+.theme-ide-native .wordmark:hover {
+  background: #202731;
+}
+
+.theme-ide-native .tab-bar {
+  gap: 2px;
+  justify-content: flex-start;
+}
+
+.theme-ide-native .tab-bar button,
+.theme-ide-native .rail-settings {
+  border-radius: 0;
+  height: 46px;
+}
+
+.theme-ide-native .tab-bar button > span,
+.theme-ide-native .rail-settings > span {
+  font-size: 19px;
+}
+
+.theme-ide-native .tab-bar button.active {
+  background: #1e252f;
+  box-shadow: inset 2px 0 #80aaff;
+}
+
+.theme-ide-native .tab-bar button > em,
+.theme-ide-native .rail-settings > em {
+  left: 50px;
+}
+
+.ide-native-explorer {
+  background: #11161d;
+  border-right: 1px solid #2b3440;
+  bottom: 24px;
+  color: #aab6c6;
+  left: 48px;
+  position: fixed;
+  top: 0;
+  width: 230px;
+  z-index: 92;
+}
+
+.ide-native-explorer-title {
+  align-items: center;
+  display: flex;
+  font-family: var(--font);
+  font-size: 10px;
+  height: 35px;
+  justify-content: space-between;
+  letter-spacing: 0.05em;
+  padding: 0 12px;
+}
+
+.ide-native-explorer-title button {
+  background: transparent;
+  border: 0;
+  color: #788699;
+  font-size: 12px;
+}
+
+.ide-native-workspace {
+  align-items: center;
+  background: #181e27;
+  border-bottom: 1px solid #29323e;
+  border-top: 1px solid #29323e;
+  color: #d0d8e3;
+  display: flex;
+  font-size: 10px;
+  height: 25px;
+  letter-spacing: 0.025em;
+  padding: 0 8px;
+}
+
+.ide-native-tree {
+  border-bottom: 1px solid #2b3440;
+  padding: 4px 0 10px;
+}
+
+.ide-native-tree > span {
+  color: #8f9daf;
+  display: block;
+  font-size: 11px;
+  height: 24px;
+  line-height: 24px;
+  padding: 0 13px;
+}
+
+.ide-native-tree > button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #a7b4c5;
+  display: flex;
+  font-family: var(--font);
+  font-size: 11px;
+  gap: 7px;
+  height: 25px;
+  padding: 0 8px 0 28px;
+  text-align: left;
+  width: 100%;
+}
+
+.ide-native-tree > button:hover {
+  background: #1d242e;
+}
+
+.ide-native-tree > button.active {
+  background: #263244;
+  color: #e0e7f2;
+}
+
+.ide-native-tree > button em {
+  color: #8bb1f2;
+  font-size: 7px;
+  font-style: normal;
+  margin-left: auto;
+}
+
+.file-kind {
+  border-radius: 2px;
+  color: #80aaff;
+  display: inline-block;
+  flex: 0 0 9px;
+  height: 9px;
+  position: relative;
+  width: 9px;
+}
+
+.file-kind::after {
+  content: "TS";
+  font-family: var(--mono);
+  font-size: 6px;
+  font-style: normal;
+  font-weight: 800;
+  left: -1px;
+  position: absolute;
+  top: 0;
+}
+
+.file-kind-json::after {
+  color: #e0af68;
+  content: "{}";
+}
+
+.file-kind-md::after {
+  color: #78dce8;
+  content: "M";
+}
+
+.file-kind-tsx::after {
+  color: #80aaff;
+  content: "R";
+}
+
+.file-kind-ts::after {
+  color: #82b1ff;
+}
+
+.ide-native-outline {
+  color: #7f8da0;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--mono);
+  font-size: 9px;
+  gap: 8px;
+  padding: 12px;
+}
+
+.ide-native-outline strong {
+  color: #bdc7d5;
+  font-family: var(--font);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.theme-ide-native .dashboard-header {
+  background: #181d25;
+  border-bottom: 1px solid #2d3541;
+  height: 35px;
+  margin-left: 278px;
+  min-height: 35px;
+  padding: 0 10px;
+}
+
+.theme-ide-native .dashboard-title {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.theme-ide-native .dashboard-title > span {
+  color: #7d8999;
+  font-family: var(--font);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.theme-ide-native .dashboard-title > h1,
+.theme-ide-native .dashboard-title > .ide-file-tab,
+.theme-ide-native .header-progress,
+.theme-ide-native .dashboard-avatar {
+  display: none;
+}
+
+.theme-ide-native .dashboard-header-actions {
+  flex: 1;
+  justify-content: center;
+}
+
+.theme-ide-native .dashboard-header .global-search {
+  background: #202630;
+  border-color: #3a4554;
+  height: 24px;
+  max-width: 420px;
+  min-width: 260px;
+  width: 42vw;
+}
+
+.theme-ide-native .global-search > span {
+  font-size: 13px;
+}
+
+.theme-ide-native .global-search input {
+  font-family: var(--font);
+  font-size: 10px;
+  text-align: center;
+}
+
+.ide-native-tabs {
+  background: #11161d;
+  border-bottom: 1px solid #2c3541;
+  display: flex;
+  height: 36px;
+  margin-left: 278px;
+  overflow-x: auto;
+}
+
+.ide-native-tabs > button {
+  align-items: center;
+  background: #151a21;
+  border: 0;
+  border-right: 1px solid #29323e;
+  color: #8896a8;
+  display: flex;
+  flex: 0 0 auto;
+  font-family: var(--font);
+  font-size: 10px;
+  gap: 7px;
+  min-width: 138px;
+  padding: 0 10px;
+}
+
+.ide-native-tabs > button.active {
+  background: #0f141b;
+  border-top: 1px solid #80aaff;
+  color: #d1dae7;
+}
+
+.ide-native-tabs > button span {
+  color: #657286;
+  margin-left: auto;
+}
+
+.theme-ide-native .module-stage {
+  background: #0f141b;
+  background-image: none;
+  margin-left: 278px;
+  padding-bottom: 170px;
+}
+
+.theme-ide-native .shell {
+  padding: 18px 20px 64px;
+}
+
+.theme-ide-native .module-toolbar {
+  align-items: end;
+  border-bottom: 1px solid #28313c;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  min-height: 48px;
+  padding-bottom: 10px;
+}
+
+.theme-ide-native .module-toolbar > div:first-child {
+  display: block;
+}
+
+.theme-ide-native .module-toolbar h1 {
+  color: #d2dbe7;
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 5px;
+}
+
+.theme-ide-native .module-toolbar p {
+  color: #6f7e91;
+  font-family: var(--mono);
+  font-size: 9px;
+  margin: 0;
+}
+
+.theme-ide-native .reference-dashboard {
+  gap: 1px;
+  background: #2a333f;
+  border: 1px solid #2a333f;
+}
+
+.theme-ide-native .dashboard-surface,
+.theme-ide-native .roadmap-table-wrap,
+.theme-ide-native .knowledge-drawer,
+.theme-ide-native .role-ranking,
+.theme-ide-native .job-library,
+.theme-ide-native .question-bank,
+.theme-ide-native .interview-workspace,
+.theme-ide-native .flashcard-lab,
+.theme-ide-native .mindmap-lab,
+.theme-ide-native .drill-lab,
+.theme-ide-native .reference-answer,
+.theme-ide-native .answer-history,
+.theme-ide-native .source-drawer,
+.theme-ide-native .interview-summary,
+.theme-ide-native .learning-audit {
+  background: #131920;
+  border-color: #2a333f;
+  border-radius: 1px;
+  box-shadow: none;
+}
+
+.theme-ide-native .dashboard-surface:hover {
+  border-color: #3a4657;
+  transform: none;
+}
+
+.theme-ide-native .roadmap-table-wrap,
+.theme-ide-native .job-library,
+.theme-ide-native .interview-workspace,
+.theme-ide-native .flashcard-lab,
+.theme-ide-native .mindmap-lab,
+.theme-ide-native .drill-lab {
+  border-top: 2px solid #34445b;
+}
+
+.theme-ide-native .job-table > article,
+.theme-ide-native .flashcard,
+.theme-ide-native .question-card,
+.theme-ide-native .answer-studio,
+.theme-ide-native .review-panel,
+.theme-ide-native .reference-grid article {
+  border-radius: 2px;
+  box-shadow: none;
+}
+
+.theme-ide-native .primary-action,
+.theme-ide-native .review-button,
+.theme-ide-native select,
+.theme-ide-native input,
+.theme-ide-native textarea,
+.theme-ide-native .segmented {
+  border-radius: 2px;
+}
+
+.ide-native-panel {
+  background: #0e1319;
+  border-top: 1px solid #34404e;
+  bottom: 24px;
+  height: 136px;
+  left: 278px;
+  position: fixed;
+  right: 0;
+  z-index: 145;
+}
+
+.ide-native-panel-tabs {
+  align-items: center;
+  border-bottom: 1px solid #252e39;
+  display: flex;
+  gap: 18px;
+  height: 34px;
+  padding: 0 12px;
+}
+
+.ide-native-panel-tabs button {
+  background: transparent;
+  border: 0;
+  color: #7d899a;
+  font-family: var(--font);
+  font-size: 9px;
+  height: 34px;
+  padding: 0;
+}
+
+.ide-native-panel-tabs button.active {
+  border-bottom: 1px solid #80aaff;
+  color: #d3dce8;
+}
+
+.ide-native-panel-tabs button b {
+  background: #2a3441;
+  border-radius: 8px;
+  color: #a8b4c4;
+  font-size: 8px;
+  padding: 1px 5px;
+}
+
+.ide-native-panel-tabs > span {
+  flex: 1;
+}
+
+.ide-native-terminal {
+  color: #8491a2;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--mono);
+  font-size: 10px;
+  gap: 9px;
+  line-height: 1.5;
+  padding: 12px 16px;
+}
+
+.terminal-prompt {
+  color: #d2dbe7;
+}
+
+.terminal-prompt b {
+  color: #73daca;
+}
+
+.ide-native-terminal i {
+  color: #80aaff;
+  font-style: normal;
+}
+
+.theme-ide-native .ide-statusbar {
+  background: #315a91;
+  bottom: 0;
+  height: 24px;
+  left: 0;
+}
+
+.ide-statusbar button {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  padding: 0;
+}
+
+.theme-ide-native.explorer-collapsed .dashboard-header,
+.theme-ide-native.explorer-collapsed .ide-native-tabs,
+.theme-ide-native.explorer-collapsed .module-stage,
+.theme-ide-native.explorer-collapsed .ide-native-panel {
+  margin-left: 48px;
+}
+
+.theme-ide-native.explorer-collapsed .ide-native-panel {
+  left: 48px;
+  margin-left: 0;
+}
+
+@media (max-width: 900px) {
+  .theme-ide-native .global-nav {
+    bottom: 24px;
+    height: 64px;
+    padding: 6px 8px;
+    width: auto;
+  }
+
+  .theme-ide-native .wordmark,
+  .ide-native-explorer {
+    display: none;
+  }
+
+  .theme-ide-native .dashboard-header,
+  .theme-ide-native .ide-native-tabs,
+  .theme-ide-native .module-stage,
+  .theme-ide-native.explorer-collapsed .dashboard-header,
+  .theme-ide-native.explorer-collapsed .ide-native-tabs,
+  .theme-ide-native.explorer-collapsed .module-stage {
+    margin-left: 0;
+  }
+
+  .theme-ide-native .ide-native-panel,
+  .theme-ide-native.explorer-collapsed .ide-native-panel {
+    bottom: 88px;
+    left: 0;
+    margin-left: 0;
+  }
+
+  .theme-ide-native .ide-statusbar {
+    bottom: 64px;
+  }
+
+  .theme-ide-native .module-stage {
+    padding-bottom: 235px;
+  }
+
+  .ide-native-tabs > button {
+    min-width: 126px;
+  }
+}
+
+@media (max-width: 620px) {
+  .theme-ide-native .dashboard-header {
+    align-items: center;
+    flex-direction: row;
+    min-height: 35px;
+    padding: 0 8px;
+  }
+
+  .theme-ide-native .dashboard-title {
+    display: none;
+  }
+
+  .theme-ide-native .dashboard-header .global-search {
+    max-width: none;
+    width: 100%;
+  }
+
+  .theme-ide-native .module-toolbar {
+    align-items: stretch;
+  }
+
+  .theme-ide-native .toolbar-actions {
+    margin-top: 8px;
+  }
+}
